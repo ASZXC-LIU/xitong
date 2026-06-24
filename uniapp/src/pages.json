@@ -1,0 +1,18 @@
+{
+  "pages": [
+    { "path": "pages/login/login", "style": { "navigationBarTitleText": "登录" } },
+    { "path": "pages/admin/dashboard", "style": { "navigationBarTitleText": "首页概览" } },
+    { "path": "pages/admin/batch-mgmt", "style": { "navigationBarTitleText": "分单管理" } },
+    { "path": "pages/admin/summary", "style": { "navigationBarTitleText": "全品类汇总" } },
+    { "path": "pages/admin/cargo-types", "style": { "navigationBarTitleText": "货品种类" } },
+    { "path": "pages/admin/employees", "style": { "navigationBarTitleText": "人员管理" } },
+    { "path": "pages/admin/units", "style": { "navigationBarTitleText": "单位管理" } },
+    { "path": "pages/admin/batch-list", "style": { "navigationBarTitleText": "分单批次" } },
+    { "path": "pages/employee/employee", "style": { "navigationBarTitleText": "员工端" } }
+  ],
+  "globalStyle": {
+    "navigationBarBackgroundColor": "#1e2a3a",
+    "navigationBarTextStyle": "white",
+    "backgroundColor": "#f5f6fa"
+  }
+}
