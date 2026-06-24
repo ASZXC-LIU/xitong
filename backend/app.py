@@ -1,10 +1,14 @@
-﻿# -*- coding: utf-8 -*-
+# -*- coding: utf-8 -*-
 """
 分单系统 - Flask 后端
 所有数据存 SQLite，API 供前端调用
 """
 import os
-from datetime import datetime
+import random
+import time
+import uuid
+import hashlib
+from datetime import datetime, timedelta
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 from flask_sqlalchemy import SQLAlchemy
@@ -28,6 +32,10 @@ class User(db.Model):
     password_hash = db.Column(db.String(256), nullable=False)
     role = db.Column(db.String(20), nullable=False)        # admin / employee
     display_name = db.Column(db.String(80), nullable=False) # 显示姓名
+    phone = db.Column(db.String(20), unique=True, nullable=True)  # 手机号
+    wechat_openid = db.Column(db.String(100), unique=True, nullable=True) # 微信openid
+    token = db.Column(db.String(64), unique=True, nullable=True)  # 登录令牌
+    token_expiry = db.Column(db.DateTime, nullable=True)          # 令牌过期时间
 
 
 class CargoType(db.Model):
@@ -110,15 +118,142 @@ def assignment_dict(a):
 
 @app.route("/api/login", methods=["POST"])
 def login():
+    """用户名或手机号 + 密码登录"""
     data = request.json
-    user = User.query.filter_by(username=data.get("username")).first()
-    if not user or not check_password_hash(user.password_hash, data.get("password", "")):
-        return jsonify({"error": "用户名或密码错误"}), 401
-    return jsonify({
+    username = data.get("username", "")
+    password = data.get("password", "")
+    user = User.query.filter_by(username=username).first()
+    if not user:
+        user = User.query.filter_by(phone=username).first()
+    if not user or not check_password_hash(user.password_hash, password):
+        return jsonify({"error": "用户名/手机号或密码错误"}), 401
+    user.token = generate_token()
+    user.token_expiry = datetime.utcnow() + timedelta(days=30)
+    db.session.commit()
+    return jsonify(user_login_dict(user))
+
+# ======================== 短信验证码登录 ========================
+verification_codes = {}
+
+def generate_token():
+    raw = str(uuid.uuid4()) + str(time.time())
+    return hashlib.sha256(raw.encode()).hexdigest()
+
+def user_login_dict(user):
+    return {
         "id": user.id, "username": user.username,
         "role": user.role, "display_name": user.display_name,
-    })
+        "phone": user.phone or "",
+        "wechat_binded": bool(user.wechat_openid),
+        "token": user.token,
+    }
 
+
+@app.route("/api/send-code", methods=["POST"])
+def send_verification_code():
+    data = request.json
+    phone = data.get("phone", "").strip()
+    if not phone or len(phone) < 11:
+        return jsonify({"error": "请输入正确的手机号"}), 400
+    code = str(random.randint(100000, 999999))
+    verification_codes[phone] = {"code": code, "expiry": time.time() + 300}
+    print(f"[验证码] 手机: {phone} 验证码: {code}")
+    return jsonify({"message": "验证码已发送", "debug_code": code})
+
+@app.route("/api/login/verify-code", methods=["POST"])
+def login_by_verify_code():
+    data = request.json
+    phone = data.get("phone", "").strip()
+    code = data.get("code", "").strip()
+    if not phone or not code:
+        return jsonify({"error": "请输入手机号和验证码"}), 400
+    stored = verification_codes.get(phone)
+    if not stored:
+        return jsonify({"error": "请先获取验证码"}), 400
+    if time.time() > stored["expiry"]:
+        verification_codes.pop(phone, None)
+        return jsonify({"error": "验证码已过期，请重新获取"}), 400
+    if stored["code"] != code:
+        return jsonify({"error": "验证码错误"}), 400
+    verification_codes.pop(phone, None)
+    user = User.query.filter_by(phone=phone).first()
+    if not user:
+        return jsonify({"error": "该手机号未注册，请联系管理员添加"}), 404
+    user.token = generate_token()
+    user.token_expiry = datetime.utcnow() + timedelta(days=30)
+    db.session.commit()
+    return jsonify(user_login_dict(user))
+
+# ======================== 微信小程序登录 ========================
+
+@app.route("/api/login/wechat", methods=["POST"])
+def login_by_wechat():
+    import requests as http_req
+    data = request.json
+    code = data.get("code", "")
+    if not code:
+        return jsonify({"error": "缺少微信code"}), 400
+    if not WECHAT_SECRET:
+        return jsonify({"error": "微信登录未配置（请在环境变量设置 WECHAT_SECRET）"}), 400
+    resp = http_req.get(WECHAT_CODE2SESSION_URL, params={
+        "appid": WECHAT_APPID, "secret": WECHAT_SECRET, "js_code": code, "grant_type": "authorization_code"
+    })
+    wx_data = resp.json()
+    if "openid" not in wx_data:
+        return jsonify({"error": "微信登录失败", "detail": wx_data.get("errmsg", "")}), 400
+    openid = wx_data["openid"]
+    user = User.query.filter_by(wechat_openid=openid).first()
+    if not user:
+        return jsonify({"wechat_openid": openid, "need_bind": True, "message": "未绑定账号，请绑定"}), 200
+    user.token = generate_token()
+    user.token_expiry = datetime.utcnow() + timedelta(days=30)
+    db.session.commit()
+    return jsonify(user_login_dict(user))
+
+@app.route("/api/login/bind-wechat", methods=["POST"])
+def bind_wechat():
+    data = request.json
+    openid = data.get("wechat_openid", "")
+    phone = data.get("phone", "").strip()
+    code = data.get("code", "").strip()
+    user = User.query.filter_by(phone=phone).first()
+    if not user:
+        return jsonify({"error": "手机号未注册，请联系管理员"}), 404
+    if user.wechat_openid:
+        return jsonify({"error": "该账号已绑定微信"}), 400
+    if User.query.filter_by(wechat_openid=openid).first():
+        return jsonify({"error": "该微信已被其他账号绑定"}), 400
+    stored = verification_codes.get(phone)
+    if not stored or time.time() > stored["expiry"]:
+        return jsonify({"error": "验证码已过期，请重新获取"}), 400
+    if stored["code"] != code:
+        return jsonify({"error": "验证码错误"}), 400
+    verification_codes.pop(phone, None)
+    user.wechat_openid = openid
+    user.token = generate_token()
+    user.token_expiry = datetime.utcnow() + timedelta(days=30)
+    db.session.commit()
+    bind_result = user_login_dict(user)
+    bind_result["message"] = "微信绑定成功"
+    return jsonify(bind_result)
+
+# ======================== 自动登录 ========================
+
+@app.route("/api/auto-login", methods=["POST"])
+def auto_login():
+    data = request.json
+    token = data.get("token", "")
+    if not token:
+        return jsonify({"error": "无效的令牌"}), 401
+    user = User.query.filter_by(token=token).first()
+    if not user:
+        return jsonify({"error": "令牌无效"}), 401
+    if user.token_expiry and datetime.utcnow() > user.token_expiry:
+        user.token = None
+        user.token_expiry = None
+        db.session.commit()
+        return jsonify({"error": "登录已过期，请重新登录"}), 401
+    return jsonify(user_login_dict(user))
 
 # ======================== 基础信息：货品种类 ========================
 
@@ -201,7 +336,7 @@ def delete_unit_type(uid):
 @app.route("/api/employees", methods=["GET"])
 def list_employees():
     users = User.query.filter_by(role="employee").all()
-    return jsonify([{"id": u.id, "display_name": u.display_name, "username": u.username} for u in users])
+    return jsonify([{"id": u.id, "display_name": u.display_name, "username": u.username, "phone": u.phone or "", "wechat_binded": bool(u.wechat_openid)} for u in users])
 
 
 @app.route("/api/employees", methods=["POST"])
@@ -217,7 +352,7 @@ def create_employee():
     )
     db.session.add(user)
     db.session.commit()
-    return jsonify({"id": user.id, "message": "人员已添加"})
+    return jsonify({"id": user.id, "message": "人员已添加", "phone": user.phone})
 
 
 @app.route("/api/employees/<int:eid>", methods=["PUT"])
@@ -298,6 +433,20 @@ def update_batch(bid):
 @app.route("/api/batches/<int:bid>/items", methods=["GET"])
 def list_items(bid):
     items = BatchItem.query.filter_by(batch_id=bid).all()
+    # Auto-sync: ensure all cargo types have corresponding BatchItems
+    cargo_types = CargoType.query.all()
+    existing_names = {i.name for i in items}
+    for ct in cargo_types:
+        if ct.name not in existing_names:
+            item = BatchItem(batch_id=bid, name=ct.name, unit=ct.default_unit or "")
+            db.session.add(item)
+            db.session.flush()
+            items.append(item)
+            existing_names.add(ct.name)
+    if cargo_types:
+        db.session.commit()
+        # Re-fetch to get complete data including empty assignments
+        items = BatchItem.query.filter_by(batch_id=bid).all()
     return jsonify([item_dict(i) for i in items])
 
 
@@ -482,7 +631,35 @@ def get_stats():
 
 # ======================== 初 始 化 ========================
 
+def migrate_schema():
+    import sqlite3
+    db_path = os.path.join(basedir, 'data.db')
+    if not os.path.exists(db_path):
+        return
+    try:
+        conn = sqlite3.connect(db_path)
+        cursor = conn.cursor()
+        cursor.execute('PRAGMA table_info(users)')
+        cols = [row[1] for row in cursor.fetchall()]
+        if 'phone' not in cols:
+            cursor.execute('ALTER TABLE users ADD COLUMN phone VARCHAR(20)')
+            print('迁移：添加 phone 列')
+        if 'wechat_openid' not in cols:
+            cursor.execute('ALTER TABLE users ADD COLUMN wechat_openid VARCHAR(100)')
+            print('迁移：添加 wechat_openid 列')
+        if 'token' not in cols:
+            cursor.execute('ALTER TABLE users ADD COLUMN token VARCHAR(64)')
+            print('迁移：添加 token 列')
+        if 'token_expiry' not in cols:
+            cursor.execute('ALTER TABLE users ADD COLUMN token_expiry TIMESTAMP')
+            print('迁移：添加 token_expiry 列')
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        print('迁移警告:', e)
+
 def init_db():
+    migrate_schema()
     db.create_all()
     # 默认货品种类
     if not CargoType.query.first():
@@ -495,13 +672,13 @@ def init_db():
     # 默认用户
     if not User.query.filter_by(username="admin").first():
         db.session.add(User(username="admin", password_hash=generate_password_hash("admin123"),
-                            role="admin", display_name="管理员"))
+                            role="admin", display_name="管理员", phone="13800000000"))
     if not User.query.filter_by(username="employee1").first():
         db.session.add(User(username="employee1", password_hash=generate_password_hash("123456"),
-                            role="employee", display_name="张三"))
+                            role="employee", display_name="张三", phone="13800000001"))
     if not User.query.filter_by(username="employee2").first():
         db.session.add(User(username="employee2", password_hash=generate_password_hash("123456"),
-                            role="employee", display_name="李四"))
+                            role="employee", display_name="李四", phone="13800000002"))
     db.session.commit()
 
 

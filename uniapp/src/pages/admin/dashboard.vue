@@ -1,5 +1,18 @@
 <template>
   <view class="dashboard-page">
+    <!-- 顶部导航栏 -->
+    <view class="nav-header">
+      <text class="nav-title">分单系统</text>
+      <view class="nav-menu">
+        <text class="nav-link" @click="goPage('batch-mgmt')">分单管理</text>
+        <text class="nav-link" @click="goPage('summary')">汇总</text>
+        <text class="nav-link" @click="goPage('employees')">人员</text>
+        <text class="nav-link" @click="goPage('batch-list')">批次</text>
+      </view>
+      <text class="nav-user">{{ user.display_name }}</text>
+      <button class="btn btn-sm btn-danger" @click="logout" style="font-size:11px;padding:2px 6px;margin-left:4px">退</button>
+    </view>
+
     <view class="stats-row">
       <view class="stat-card">
         <text class="stat-num">{{ stats.totalBatches }}</text>
@@ -43,11 +56,12 @@
 
 <script>
 import { loadBatches, loadItems } from "../../utils/admin-api"
-import { getStorage } from "../../utils/storage"
+import { getStorage, removeStorage } from "../../utils/storage"
 
 export default {
   data() {
     return {
+      user: {},
       batches: [],
       items: []
     }
@@ -72,15 +86,23 @@ export default {
     }
   },
   async onShow() {
+    this.user = getStorage("user") || {}
     await this.loadData()
   },
   methods: {
+    goPage(name) {
+      uni.navigateTo({ url: "/pages/admin/" + name })
+    },
+    logout() {
+      removeStorage("user")
+      removeStorage("token")
+      uni.navigateTo({ url: "/pages/login/login", redirect: true })
+    },
     async loadData() {
       try {
         this.batches = await loadBatches()
         const sorted = [...this.batches].sort((a,b) => (b.arrival_time||'').localeCompare(a.arrival_time||'') || (b.id-a.id)); if (sorted.length) {
-          const latest = this.sortedBatches[0]
-          const { loadItems } = require("../../utils/admin-api")
+          const latest = sorted[0]
           this.items = await loadItems(latest.id)
         }
       } catch (e) {
@@ -114,4 +136,16 @@ export default {
 .col-time { width: 120px; text-align: center; }
 .col-count { width: 60px; text-align: center; }
 .empty-hint { display: block; text-align: center; color: #909399; padding: 20px; font-size: 14px; }
+.nav-header { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; padding: 10px 0; border-bottom: 1px solid #e0e0e0; flex-wrap: wrap; }
+.nav-title { font-size: 18px; font-weight: bold; color: #303133; margin-right: 4px; }
+.nav-menu { display: flex; gap: 6px; flex: 1; }
+.nav-link { font-size: 13px; color: #409eff; cursor: pointer; padding: 2px 8px; border-radius: 4px; background: #ecf5ff; white-space: nowrap; }
+.nav-user { font-size: 12px; color: #909399; }
+.top-bar { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; padding-bottom: 10px; border-bottom: 1px solid #e0e0e0; }
+.top-title { flex: 1; font-size: 18px; font-weight: bold; color: #303133; }
+.top-user { font-size: 13px; color: #606266; }
+.nav-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 16px; }
+.nav-card { background: #fff; border-radius: 10px; padding: 14px 8px; text-align: center; box-shadow: 0 2px 6px rgba(0,0,0,0.06); }
+.nav-icon { display: block; font-size: 24px; margin-bottom: 4px; }
+.nav-label { font-size: 12px; color: #303133; }
 </style>

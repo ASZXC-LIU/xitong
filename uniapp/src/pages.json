@@ -1,6 +1,7 @@
 {
   "pages": [
     { "path": "pages/login/login", "style": { "navigationBarTitleText": "登录" } },
+    { "path": "pages/admin/app", "style": { "navigationBarTitleText": "管理后台", "navigationStyle": "custom" } },
     { "path": "pages/admin/dashboard", "style": { "navigationBarTitleText": "首页概览" } },
     { "path": "pages/admin/batch-mgmt", "style": { "navigationBarTitleText": "分单管理" } },
     { "path": "pages/admin/summary", "style": { "navigationBarTitleText": "全品类汇总" } },

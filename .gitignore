@@ -1,9 +1,9 @@
-﻿# ====================
+# ====================
 # Python (backend)
 # ====================
 __pycache__/
 *.py[cod]
-*$py.class
+*.class
 *.so
 *.egg-info/
 dist/
@@ -70,3 +70,21 @@ xitong.7z
 
 # Temporary files
 tmp_*
+
+# ====================
+# Backup / WIP files
+# ====================
+not-used
+frontend/src/views/Admin_original.vue
+frontend/src/views/Admin_new.vue
+backend/run_prod.py
+
+# ====================
+# uni-app root duplicates (real source is under src/)
+# ====================
+uniapp/App.vue
+uniapp/index.html
+uniapp/main.js
+uniapp/manifest.json
+uniapp/pages.json
+uniapp/project.private.config.json

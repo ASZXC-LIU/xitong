@@ -87,7 +87,7 @@
             <template v-else>
               <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
                 <strong>货品列表</strong>
-                <button class="btn btn-sm btn-primary" @click="showItemForm=true">+ 添加货品</button>
+                <!-- 添加货品已移除，所有货品类型自动显示 -->
               </div>
               <div v-if="items.length===0" class="empty-hint">暂无货品</div>
               <div v-else class="matrix-table-wrap">
@@ -98,10 +98,10 @@
                       <th class="col-unit">单位</th>
                       <th v-for="emp in matrixEmployees" :key="emp.id" class="col-emp" colspan="2">
                         <div class="emp-header-name">{{ emp.name }}</div>
-                        <div class="emp-header-sub"><span class="sum-sub-alloc">分配</span><span class="sum-sub-div">/</span><span class="sum-sub-actual">报货</span></div>
+                        <div class="emp-header-sub"><span class="sum-sub-alloc col-type-alloc">分货</span><span class="sum-sub-div">/</span><span class="sum-sub-actual col-type-actual">报货</span></div>
                       </th>
-                      <th class="col-total">总分配</th>
-                      <th class="col-total">总报货</th>
+                      <th class="col-total col-type-alloc">总分货</th>
+                      <th class="col-total col-type-actual">总报货</th>
                       <th class="col-status">状态</th>
                       <th class="col-remark">备注</th>
                       <th class="col-actions">操作</th>
@@ -112,18 +112,18 @@
                       <td class="item-name-cell" @click="showItemDetail(item)"><strong>{{ item.name }}</strong></td>
                       <td>{{ item.unit }}</td>
                       <template v-for="emp in matrixEmployees" :key="emp.id">
-                        <td class="cell-qty-alloc">
+                        <td class="cell-qty-alloc col-type-alloc" @mouseenter="onCellEnter($event, item, emp)" @mouseleave="onCellLeave($event)">
                           <input type="number"
                                  :value="getItemQty(item, emp.id)"
                                  @change="saveEdit(item, emp.id, $event.target.value)"
                                  step="any" min="0" class="cell-input" />
                         </td>
-                        <td class="cell-qty-actual">
+                        <td class="cell-qty-actual col-type-actual" @mouseenter="onCellEnter($event, item, emp)" @mouseleave="onCellLeave($event)">
                           <span class="actual-qty">{{ getItemActual(item, emp.id) }}</span>
                         </td>
                       </template>
-                      <td class="cell-total">{{ getItemTotal(item) }}</td>
-                      <td class="cell-total cell-total-actual">{{ getItemActualTotal(item) }}</td>
+                      <td class="cell-total col-type-alloc" @mouseenter="onCellEnter($event, item, null)" @mouseleave="onCellLeave($event)">{{ getItemTotal(item) }}</td>
+                      <td class="cell-total cell-total-actual col-type-actual" @mouseenter="onCellEnter($event, item, null)" @mouseleave="onCellLeave($event)">{{ getItemActualTotal(item) }}</td>
                       <td><span :class="'status-badge ' + (item.status==='未分配' ? 'status-pending' : item.status==='未报货' ? 'status-warn' : 'status-ok')">{{ item.status }}</span></td>
                       <td class="cell-remark">{{ item.remark || '无备注' }}</td>
                       <td>
@@ -138,17 +138,19 @@
                       <td><strong>合计</strong></td>
                       <td></td>
                       <template v-for="emp in matrixEmployees" :key="emp.id">
-                        <td class="cell-total">{{ getColumnTotal(emp.id) }}</td>
-                        <td class="cell-total cell-total-actual">{{ getMatrixColumnActualTotal(emp.id) }}</td>
+                        <td class="cell-total col-type-alloc" @mouseenter="onCellEnter($event, null, emp)" @mouseleave="onCellLeave($event)">{{ getColumnTotal(emp.id) }}</td>
+                        <td class="cell-total cell-total-actual col-type-actual" @mouseenter="onCellEnter($event, null, emp)" @mouseleave="onCellLeave($event)">{{ getMatrixColumnActualTotal(emp.id) }}</td>
                       </template>
-                      <td class="cell-total">{{ getGrandTotal() }}</td>
-                      <td class="cell-total cell-total-actual">{{ getMatrixGrandActualTotal() }}</td>
+                      <td class="cell-total col-type-alloc" @mouseenter="onCellEnter($event, null, null)" @mouseleave="onCellLeave($event)">{{ getGrandTotal() }}</td>
+                      <td class="cell-total cell-total-actual col-type-actual" @mouseenter="onCellEnter($event, null, null)" @mouseleave="onCellLeave($event)">{{ getMatrixGrandActualTotal() }}</td>
                       <td></td>
                       <td></td>
                     </tr>
                   </tfoot>
                 </table>
               </div>
+              <!-- Tooltip -->
+              <div class="matrix-tooltip" v-if="tooltip.visible" :style="{left: tooltip.x+'px', top: tooltip.y+'px'}">{{ tooltip.text }}</div>
             </template>
           </div>
         </div>
@@ -253,12 +255,12 @@
                 <th v-for="emp in summaryEmployees" :key="emp.id" class="sum-col-emp" colspan="2">
                   <div class="sum-emp-name">{{ emp.name }}</div>
                   <div class="sum-emp-sub">
-                    <span class="sum-sub-alloc">分货</span>
+                    <span class="sum-sub-alloc col-type-alloc">分货</span>
                     <span class="sum-sub-div">/</span>
-                    <span class="sum-sub-actual">报货</span>
+                    <span class="sum-sub-actual col-type-actual">报货</span>
                   </div>
                 </th>
-                <th class="sum-col-total">总分配</th>
+                <th class="sum-col-total">总分货</th>
                 <th class="sum-col-total">总报货</th>
               </tr>
             </thead>
@@ -359,36 +361,11 @@
     </div>
 
 
-    <!-- 添加货品弹窗 -->
-    <div v-if="showItemForm" class="modal-mask" @click.self="showItemForm=false">
-      <div class="modal-card">
-        <h3>添加货品</h3>
-        <div class="form-group">
-          <label>货品名称</label>
-          <input v-model="itemForm.name" list="cargo-names" placeholder="输入或选择种类..." @input="onCargoNameInput" autocomplete="off" />
-          <datalist id="cargo-names">
-            <option v-for="ct in cargoTypes" :key="ct.id" :value="ct.name">{{ ct.name }}</option>
-          </datalist>
-        </div>
-        <div class="form-group">
-          <label>单位</label>
-          <input v-model="itemForm.unit" placeholder="自动填入默认单位" readonly style="background:#f5f7fa;color:#666;cursor:default" />
-        </div>
-        <div class="form-group">
-          <label>备注</label>
-          <input v-model="itemForm.remark" placeholder="备注信息（可选）" />
-        </div>
-        <div class="modal-actions">
-          <button class="btn" @click="showItemForm=false">取消</button>
-          <button class="btn btn-primary" @click="addItem">添加</button>
-        </div>
-      </div>
-    </div>
-
-    <!-- 分配弹窗 -->
+    <!-- 分货弹窗 -->
+<!-- 分货弹窗 -->
     <div v-if="showAssignmentModal" class="modal-mask" @click.self="showAssignmentModal=false">
       <div class="modal-card">
-        <h3>分配货品: {{ assignItem.name }}</h3>
+        <h3>分货货品: {{ assignItem.name }}</h3>
         <div v-for="(a, idx) in assignmentForm" :key="idx" style="display:flex;gap:8px;margin-bottom:8px">
           <select v-model="a.user_id" style="flex:1">
             <option value="">-- 选择员工 --</option>
@@ -397,7 +374,7 @@
           <input v-model="a.allocated_quantity" type="number" step="0.1" placeholder="数量" style="width:100px" />
           <button class="btn btn-sm btn-danger" @click="removeAssignmentRow(idx)" v-if="idx>0"></button>
         </div>
-        <button class="btn btn-sm" @click="addAssignmentRow" style="margin-bottom:12px">+ 添加分配</button>
+        <button class="btn btn-sm" @click="addAssignmentRow" style="margin-bottom:12px">+ 添加分货</button>
         <div class="modal-actions">
           <button class="btn" @click="showAssignmentModal=false">取消</button>
           <button class="btn btn-primary" @click="saveAssignment">保存</button>
@@ -422,7 +399,7 @@
         <div v-if="employees && employees.length" class="mobile-assign-list">
           <div class="assign-header" style="display:flex;font-weight:600;font-size:13px;color:#666;padding:8px 0;border-bottom:1px solid #eee">
             <span style="flex:1">员工</span>
-            <span style="width:80px;text-align:center">分配数量</span>
+            <span style="width:80px;text-align:center">分货数量</span>
             <span style="width:80px;text-align:center">已报数量</span>
           </div>
           <div v-for="emp in employees" :key="emp.id" class="assign-row" style="display:flex;align-items:center;padding:10px 0;border-bottom:1px solid #f0f0f0">
@@ -438,7 +415,7 @@
         <div v-if="employees && employees.length" style="margin-top:12px;padding-top:12px;border-top:2px solid #409eff;display:flex;justify-content:space-between;font-weight:600;font-size:14px">
           <span>合计</span>
           <div style="display:flex;gap:24px">
-            <span style="color:#e6a23c">分配: {{ getItemTotal(itemDetailView) }}</span>
+            <span style="color:#e6a23c">分货: {{ getItemTotal(itemDetailView) }}</span>
             <span style="color:#67c23a">报货: {{ getItemActualTotal(itemDetailView) }}</span>
           </div>
         </div>
@@ -488,10 +465,11 @@ export default {
       unitTypes: [],
       cargoForm: { name: "", default_unit: "" },
       unitForm: { name: "" },
-      empForm: { display_name: "", username: "", password: "" },
+      empForm: { display_name: "", phone: "", username: "", password: "" },
       cargoMsg: "", empMsg: "", unitMsg: "",
       showBatchForm: false,
       editingBatchId: null,
+      tooltip: { visible: false, x: 0, y: 0, text: "" },
       batchForm: { name: "", arrival_time: "", batch_remark: "", batch_date: "" },
       batchMsg: "", batchMsgOk: false,
       showItemForm: false,
@@ -645,8 +623,18 @@ export default {
     async updateBatch() {
       try {
         this.batchMsg = ""
+        // Recalculate name from batch_date
+        var nameVal = this.batchForm.name || ""
+        if (this.batchForm.batch_date) {
+          var parts = this.batchForm.batch_date.split("-")
+          if (parts.length === 3) {
+            var month = parseInt(parts[1])
+            var day = parseInt(parts[2])
+            nameVal = month + "月" + day + "日报货"
+          }
+        }
         const payload = {
-          name: this.batchForm.name || "",
+          name: nameVal,
           arrival_time: this.batchForm.arrival_time || "",
           batch_remark: this.batchForm.batch_remark || ""
         }
@@ -669,7 +657,7 @@ export default {
         const month = parseInt(parts[1])
         const day = parseInt(parts[2])
         this.batchForm.name = month + "月" + day + "日报货"
-        this.batchForm.arrival_time = dateStr
+        // arrival_time kept from user input
         const r = await apiPost(API + "/batches", this.batchForm)
         this.batchMsg = "创建成功!"
         this.batchMsgOk = true
@@ -955,6 +943,90 @@ export default {
     },
     backToBatchItems() {
       this.itemDetailView = null
+    },
+    // ===== HOVER & TOOLTIP =====
+    onCellEnter(event, item, emp) {
+      const td = event.currentTarget
+      const tr = td.closest('tr')
+      const tbody = tr.closest('tbody') || tr.closest('tfoot') || tr.closest('thead')
+      if (!tbody) return
+      const rows = Array.from(tbody.querySelectorAll('tr'))
+      const rowIdx = rows.indexOf(tr)
+      const cells = Array.from(tr.children)
+      const colIdx = cells.indexOf(td)
+      // Remove previous highlights
+      document.querySelectorAll('.matrix-table .hover-row').forEach(function(el) {
+        el.classList.remove('hover-row')
+      })
+      document.querySelectorAll('.matrix-table .hover-col').forEach(function(el) {
+        el.classList.remove('hover-col')
+      })
+      // Highlight current row
+      tr.classList.add('hover-row')
+      // Highlight current column across all rows in this table body
+      var table = tr.closest('table')
+      if (table) {
+        var allRows = table.querySelectorAll('tr')
+        for (var r = 0; r < allRows.length; r++) {
+          var rowCells = allRows[r].children
+          if (rowCells[colIdx]) {
+            rowCells[colIdx].classList.add('hover-col')
+          }
+        }
+      }
+                  // Tooltip logic - show only what this cell contains
+      var isAlloc = td.classList.contains('col-type-alloc')
+      var isActual = td.classList.contains('col-type-actual')
+      var isTotal = td.classList.contains('cell-total') || td.tagName === 'TH'
+      var isTfoot = tr.closest('tfoot') !== null
+      var itemName = item && item.name ? item.name : ''
+      var itemUnit = item && item.unit ? item.unit : ''
+      var empName = emp && emp.name ? emp.name : ''
+      // Get cell value - input or text
+      var cellValue = td.textContent || ''
+      var inp = td.querySelector('input')
+      if (inp) cellValue = inp.value
+      cellValue = cellValue.trim() || '0'
+      var text = ''
+      if (td.classList.contains('item-name-cell')) {
+        text = itemName
+      } else if (td.classList.contains('col-unit')) {
+        text = itemName + ' 单位： ' + itemUnit
+      } else if (isTfoot) {
+        if (isAlloc && empName) {
+          text = empName + '总分货：' + cellValue
+        } else if (isActual && empName) {
+          text = empName + '总报货：' + cellValue
+        } else if (isAlloc) {
+          text = '总分货：' + cellValue
+        } else if (isActual) {
+          text = '总报货：' + cellValue
+        }
+      } else if (isAlloc && isTotal && itemName) {
+        text = itemName + '总分货：' + cellValue
+      } else if (isActual && isTotal && itemName) {
+        text = itemName + '总报货：' + cellValue
+      } else if (isAlloc && itemName && empName) {
+        text = itemName + ' ' + empName + ' 分货：' + cellValue
+      } else if (isActual && itemName && empName) {
+        text = itemName + ' ' + empName + ' 报货：' + cellValue
+      } else if (td.classList.contains('cell-remark')) {
+        text = '备注：' + cellValue
+      }
+      if (text) {
+        this.tooltip.text = text
+        this.tooltip.x = event.clientX + 12
+        this.tooltip.y = event.clientY - 10
+        this.tooltip.visible = true
+      }    },
+    onCellLeave(event) {
+      document.querySelectorAll('.matrix-table .hover-row').forEach(function(el) {
+        el.classList.remove('hover-row')
+      })
+      document.querySelectorAll('.matrix-table .hover-col').forEach(function(el) {
+        el.classList.remove('hover-col')
+      })
+      this.tooltip.visible = false
     }
   }
 }
@@ -1060,6 +1132,111 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-
 .batch-select:focus { border-color: #409eff; }
 
 /* 矩阵表格 - 首列固定 */
+
+/* Column type background colors - matrix table */
+.matrix-table .col-type-alloc {
+  background-color: #fff8e1 !important;  /* light yellow for ?货 */
+}
+.matrix-table .col-type-actual {
+  background-color: #e8f5e9 !important;  /* light green for 报货 */
+}
+.matrix-table th.col-type-alloc {
+  background-color: #fff3cd !important;
+}
+.matrix-table th.col-type-actual {
+  background-color: #c8e6c9 !important;
+}
+/* Hover highlight for row and column */
+.matrix-table tbody tr.hover-row td {
+  background-color: #e3e8f0 !important;
+}
+.matrix-table tbody tr.hover-row td.col-type-alloc {
+  background-color: #ffe8b0 !important;
+}
+.matrix-table tbody tr.hover-row td.col-type-actual {
+  background-color: #c8e6c9 !important;
+}
+.matrix-table td.hover-col {
+  background-color: #d0d8e8 !important;
+}
+.matrix-table td.col-type-alloc.hover-col {
+  background-color: #ffd699 !important;
+}
+.matrix-table td.col-type-actual.hover-col {
+  background-color: #a5d6a7 !important;
+}
+/* Tooltip */
+.matrix-tooltip {
+  position: fixed;
+  z-index: 10000;
+  background: #333;
+  color: #fff;
+  padding: 6px 10px;
+  border-radius: 4px;
+  font-size: 12px;
+  pointer-events: none;
+  white-space: nowrap;
+  max-width: 280px;
+  line-height: 1.5;
+}
+
+
+/* Column type background colors */
+.matrix-table .col-type-alloc {
+  background-color: #fff8e1 !important;
+}
+.matrix-table .col-type-actual {
+  background-color: #e8f5e9 !important;
+}
+.matrix-table th.col-type-alloc {
+  background-color: #fff3cd !important;
+}
+.matrix-table th.col-type-actual {
+  background-color: #c8e6c9 !important;
+}
+/* Hover highlight */
+.matrix-table tbody tr.hover-row td,
+.matrix-table tfoot tr.hover-row td {
+  background-color: #dde4f0 !important;
+}
+.matrix-table tbody tr.hover-row td.col-type-alloc,
+.matrix-table tfoot tr.hover-row td.col-type-alloc {
+  background-color: #ffe8b0 !important;
+}
+.matrix-table tbody tr.hover-row td.col-type-actual,
+.matrix-table tfoot tr.hover-row td.col-type-actual {
+  background-color: #c8e6c9 !important;
+}
+.matrix-table td.hover-col {
+  background-color: #d0d8e8 !important;
+}
+.matrix-table td.col-type-alloc.hover-col {
+  background-color: #ffd699 !important;
+}
+.matrix-table td.col-type-actual.hover-col {
+  background-color: #a5d6a7 !important;
+}
+.matrix-table th.hover-col {
+  background-color: #c0c8e0 !important;
+}
+
+
+/* Cell hover tooltip */
+.matrix-tooltip {
+  position: fixed;
+  z-index: 10000;
+  background: rgba(51, 51, 51, 0.92);
+  color: #fff;
+  padding: 8px 12px;
+  border-radius: 6px;
+  font-size: 12px;
+  pointer-events: none;
+  white-space: nowrap;
+  max-width: 320px;
+  line-height: 1.6;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+}
+
 .matrix-table-wrap {
   overflow-x: auto;
   margin-top: 4px;
@@ -1289,7 +1466,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-
   #print-zone .data-table { font-size: 12px; }
   #print-zone .data-table th, #print-zone .data-table td { padding: 4px; }
 
-  /* 移动端分配列表*/
+  /* 移动端分货列表*/
   .mobile-assign-list .cell-input { width: 60px; }
 }
 

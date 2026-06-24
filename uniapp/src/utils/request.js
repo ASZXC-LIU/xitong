@@ -9,8 +9,11 @@ export async function apiGet(path) {
   // #endif
 
   // #ifdef MP-WEIXIN
-  const [err, res] = await uni.request({ url: API + path })
-  if (err) throw err
+  const res = await uni.request({ url: API + path })
+  if (res.statusCode >= 400) {
+    const msg = (res.data && res.data.error) || ("请求失败: " + res.statusCode)
+    throw new Error(msg)
+  }
   return res.data
   // #endif
 }
@@ -26,11 +29,14 @@ export async function apiPost(path, data) {
   // #endif
 
   // #ifdef MP-WEIXIN
-  const [err, res] = await uni.request({
+  const res = await uni.request({
     url: API + path, method: "POST",
     data, header: { "Content-Type": "application/json" }
   })
-  if (err) throw err
+  if (res.statusCode >= 400) {
+    const msg = (res.data && res.data.error) || ("请求失败: " + res.statusCode)
+    throw new Error(msg)
+  }
   return res.data
   // #endif
 }
@@ -46,11 +52,14 @@ export async function apiPut(path, data) {
   // #endif
 
   // #ifdef MP-WEIXIN
-  const [err, res] = await uni.request({
+  const res = await uni.request({
     url: API + path, method: "PUT",
     data, header: { "Content-Type": "application/json" }
   })
-  if (err) throw err
+  if (res.statusCode >= 400) {
+    const msg = (res.data && res.data.error) || ("请求失败: " + res.statusCode)
+    throw new Error(msg)
+  }
   return res.data
   // #endif
 }
@@ -63,8 +72,11 @@ export async function apiDelete(path) {
   // #endif
 
   // #ifdef MP-WEIXIN
-  const [err, res] = await uni.request({ url: API + path, method: "DELETE" })
-  if (err) throw err
+  const res = await uni.request({ url: API + path, method: "DELETE" })
+  if (res.statusCode >= 400) {
+    const msg = (res.data && res.data.error) || ("请求失败: " + res.statusCode)
+    throw new Error(msg)
+  }
   return res.data
   // #endif
 }

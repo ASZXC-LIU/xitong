@@ -28,8 +28,8 @@
             <text class="cell-emp-header" style="text-align:center">{{ emp.name }}</text>
             <text class="cell-emp-header sub">{{ emp.name }}</text>
           </block>
-          <text class="cell-total-h">总分配</text>
-          <text class="cell-total-h">总报货</text>
+          <text class="cell-total-h col-type-alloc">总分货</text>
+          <text class="cell-total-h col-type-actual">总报货</text>
           <text class="cell-status-h">状态</text>
           <text class="cell-remark-h">备注</text>
           <text class="cell-action-h">操作</text>
@@ -39,8 +39,8 @@
           <text class="cell-name"></text>
           <text class="cell-unit"></text>
           <block v-for="emp in matrixEmployees" :key="emp.id">
-            <text class="cell-emp-sub" style="color:#99c9ff;font-size:10px;text-align:center">分配</text>
-            <text class="cell-emp-sub" style="color:#99c9ff;font-size:10px;text-align:center">报货</text>
+            <text class="cell-emp-sub col-type-alloc" style="color:#99c9ff;font-size:10px;text-align:center">分货</text>
+            <text class="cell-emp-sub col-type-actual" style="color:#99c9ff;font-size:10px;text-align:center">报货</text>
           </block>
           <text class="cell-total-h"></text>
           <text class="cell-total-h"></text>
@@ -54,15 +54,15 @@
           <text class="cell-name" @click="showDetail(item)">{{ item.name }}</text>
           <text class="cell-unit">{{ item.unit }}</text>
           <block v-for="emp in matrixEmployees" :key="emp.id">
-            <view class="cell-qty-alloc">
+            <view class="cell-qty-alloc col-type-alloc" @mouseenter="onCellEnter($event, item, emp, 0)" @mouseleave="onCellLeave">
               <input type="number" :value="getItemQty(item, emp.id)" @blur="saveEdit(item, emp.id, $event.detail.value)" step="any" min="0" class="qty-input" />
             </view>
-            <view class="cell-qty-actual">
+            <view class="cell-qty-actual col-type-actual" @mouseenter="onCellEnter($event, item, emp, 1)" @mouseleave="onCellLeave">
               <text class="actual-qty">{{ getItemActual(item, emp.id) }}</text>
             </view>
           </block>
-          <text class="cell-total-v">{{ getItemTotal(item) }}</text>
-          <text class="cell-total-v actual">{{ getItemActualTotal(item) }}</text>
+          <text class="cell-total-v col-type-alloc" @mouseenter="onCellEnter($event, item, null, 2)" @mouseleave="onCellLeave">{{ getItemTotal(item) }}</text>
+          <text class="cell-total-v actual col-type-actual" @mouseenter="onCellEnter($event, item, null, 3)" @mouseleave="onCellLeave">{{ getItemActualTotal(item) }}</text>
           <view class="cell-status-v">
             <text :class="'badge ' + (item.status==='未分配' ? 'badge-pending' : item.status==='未报货' ? 'badge-warn' : 'badge-ok')">{{ item.status }}</text>
           </view>
@@ -119,6 +119,10 @@
       </view>
     </uni-popup>
 
+
+<!-- Tooltip -->
+<view class="matrix-tooltip" v-if="tooltip.visible" :style="{left:tooltip.x+'px',top:tooltip.y+'px'}">{{tooltip.text}}</view>
+
     <!-- 货品详情弹窗 (手机端) -->
     <uni-popup v-if="detailItem" class="modal-mask" @click="detailItem=null">
       <view class="modal-card modal-card-wide" @click.stop>
@@ -135,7 +139,7 @@
         <view class="assign-list">
           <view class="assign-header">
             <text style="flex:1">员工</text>
-            <text style="width:80px;text-align:center">分配数量</text>
+            <text style="width:80px;text-align:center">分货数量</text>
             <text style="width:80px;text-align:center">已报数量</text>
           </view>
           <view v-for="emp in employees" :key="emp.id" class="assign-row">
@@ -149,7 +153,7 @@
         <view class="assign-total">
           <text>合计</text>
           <view style="display:flex;gap:24px">
-            <text style="color:#e6a23c">分配: {{ getItemTotal(detailItem) }}</text>
+            <text style="color:#e6a23c">分货: {{ getItemTotal(detailItem) }}</text>
             <text style="color:#67c23a">报货: {{ getItemActualTotal(detailItem) }}</text>
           </view>
         </view>
@@ -169,14 +173,20 @@ export default {
       selectedBatchId: null,
       // 批次表单
       showBatchForm: false, editingBatchId: null,
-      batchForm: { name: "", arrival_time: "", batch_remark: "" },
+      batchForm: { name: "", arrival_time: "", batch_remark: "", batch_date: "" },
       batchMsg: "", batchMsgOk: false,
       // 货品表单
       showItemForm: false,
       itemForm: { name: "", unit: "", spec: "", remark: "" },
       itemMsg: "",
       // 详情
-      detailItem: null
+      detailItem: null,
+      hoverRow: -1,
+      hoverCol: -1,
+      tooltip: { visible: false, x: 0, y: 0, text: "" },
+      hoverRow: -1,
+      hoverCol: -1,
+      tooltip: { visible: false, x: 0, y: 0, text: "" }
     }
   },
   computed: {
@@ -286,7 +296,7 @@ export default {
         await this.loadItems(this.selectedBatchId)
       } catch (e) { console.error(e) }
     },
-    // 分配编辑
+    // 分货编辑
     async saveEdit(item, userId, newValue) {
       const newQty = Number(newValue) || 0
       const existing = item.assignments || []
@@ -351,6 +361,24 @@ export default {
     },
     showDetail(item) {
       this.detailItem = item
+    },
+    // Hover & Tooltip
+    onCellEnter(event, item, emp, colType) {
+      var text = ''
+      if (item && item.name) {
+        var itemName = item.name
+        var empName = emp && emp.name ? emp.name : ''
+        if (colType === 0 && empName) text = itemName + ' ' + empName + ' 分货：' + this.getItemQty(item, emp.id)
+        else if (colType === 1 && empName) text = itemName + ' ' + empName + ' 报货：' + this.getItemActual(item, emp.id)
+        else if (colType === 2) text = itemName + '总分货：' + this.getItemTotal(item)
+        else if (colType === 3) text = itemName + '总报货：' + this.getItemActualTotal(item)
+      }
+      if (text) { this.tooltip.text = text; this.tooltip.x = event.clientX + 12; this.tooltip.y = event.clientY - 10; this.tooltip.visible = true }
+    },
+    onCellLeave() {
+      this.hoverRow = -1
+      this.hoverCol = -1
+      this.tooltip.visible = false
     }
   }
 }
@@ -410,4 +438,20 @@ export default {
 .btn-danger { background: #f56c6c; border-color: #f56c6c; color: #fff; }
 .btn-sm { padding: 4px 10px; font-size: 12px; }
 .btn-xs { padding: 2px 8px; font-size: 11px; }
+
+/* Column type colors */
+.col-type-alloc { background-color: #fff8e1 !important; }
+.col-type-actual { background-color: #e8f5e9 !important; }
+.col-type-alloc.cell-total-h, .col-type-alloc.cell-total-v { background-color: #fff8e1 !important; }
+.col-type-actual.cell-total-h, .col-type-actual.cell-total-v { background-color: #e8f5e9 !important; }
+/* Hover row highlight */
+.matrix-row.data-row.hover-row { background-color: #dde4f0 !important; }
+.matrix-row.data-row.hover-row .col-type-alloc { background-color: #ffe8b0 !important; }
+.matrix-row.data-row.hover-row .col-type-actual { background-color: #c8e6c9 !important; }
+.matrix-row.data-row .hover-col { background-color: #d0d8e8 !important; }
+.matrix-row.data-row .col-type-alloc.hover-col { background-color: #ffd699 !important; }
+.matrix-row.data-row .col-type-actual.hover-col { background-color: #a5d6a7 !important; }
+/* Tooltip */
+.matrix-tooltip { position: fixed; z-index: 10000; background: rgba(51,51,51,0.92); color: #fff; padding: 6px 10px; border-radius: 4px; font-size: 12px; pointer-events: none; white-space: nowrap; max-width: 280px; line-height: 1.5; }
+
 </style>
