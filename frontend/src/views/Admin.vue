@@ -1,20 +1,20 @@
 <template>
   <div class="admin-layout">
     <!-- ========== 左侧菜单 ========== -->
-    <aside class="sidebar" :class="{ open: sidebarOpen }" @click.self="sidebarOpen=false">
+    <aside class="sidebar" :class="{ open: sidebarOpen }" @click.self="sidebarOpen = false">
       <div class="sidebar-logo">
         <span>分单系统</span>
-        <button class="hamburger" @click.stop="sidebarOpen=!sidebarOpen">{{ sidebarOpen ? "✕" : "☰" }}</button>
+        <button class="hamburger" @click.stop="sidebarOpen = !sidebarOpen">{{ sidebarOpen ? "✕" : "☰" }}</button>
       </div>
       <nav class="sidebar-nav" @click.stop>
-        <a :class="{ active: currentPage==='dashboard' }" @click="goToDashboard">首页概览</a>
-        <a :class="{ active: currentPage==='batches' }" @click="goToBatches">分单管理</a>
-        <a :class="{ active: currentPage==='batchList' }" @click="currentPage='batchList'; loadBatches()">分单批次</a>
+        <a :class="{ active: currentPage === 'dashboard' }" @click="goToDashboard">首页概览</a>
+        <a :class="{ active: currentPage === 'batches' }" @click="goToBatches">分单管理</a>
+        <a :class="{ active: currentPage === 'batchList' }" @click="currentPage = 'batchList'; loadBatches()">分单批次</a>
         <div class="sidebar-section-label">基础信息</div>
-        <a :class="{ active: currentPage==='cargoTypes' }" @click="currentPage='cargoTypes'">货品种类</a>
-        <a :class="{ active: currentPage==='employeeMgmt' }" @click="currentPage='employeeMgmt'">人员管理</a>
-        <a :class="{ active: currentPage==='unitTypes' }" @click="currentPage='unitTypes'">单位管理</a>
-        <a :class="{ active: currentPage==='summary' }" @click="openSummary">全品类汇总</a>
+        <a :class="{ active: currentPage === 'cargoTypes' }" @click="currentPage = 'cargoTypes'">货品种类</a>
+        <a :class="{ active: currentPage === 'employeeMgmt' }" @click="currentPage = 'employeeMgmt'">人员管理</a>
+        <a :class="{ active: currentPage === 'unitTypes' }" @click="currentPage = 'unitTypes'">单位管理</a>
+        <a :class="{ active: currentPage === 'summary' }" @click="openSummary">全品类汇总</a>
       </nav>
       <div class="sidebar-footer" @click.stop>
         <span>{{ user.display_name }}</span>
@@ -23,39 +23,58 @@
     </aside>
 
     <!-- ========== 右侧内容 ========== -->
-    <main class="main-content" @click="sidebarOpen=false">
+    <main class="main-content" @click="sidebarOpen = false">
       <div class="mobile-header">
-        <button class="hamburger" @click.stop="sidebarOpen=!sidebarOpen">{{ sidebarOpen ? "✕" : "☰" }}</button>
+        <button class="hamburger" @click.stop="sidebarOpen = !sidebarOpen">{{ sidebarOpen ? "✕" : "☰" }}</button>
         <span class="mobile-title">{{ mobilePageTitle }}</span>
       </div>
 
       <!-- 首页概览 -->
-      <div v-if="currentPage==='dashboard'">
+      <div v-if="currentPage === 'dashboard'">
         <h2 class="page-title">首页概览</h2>
         <div class="stats-row">
-          <div class="stat-card"><div class="stat-num">{{ stats.totalBatches }}</div><div class="stat-label">总批</div></div>
+          <div class="stat-card">
+            <div class="stat-num">{{ stats.totalBatches }}</div>
+            <div class="stat-label">总批</div>
+          </div>
           <div class="stat-card">
             <div class="stat-num">{{ stats.totalItems }}</div>
             <div class="stat-label">最新货</div>
-            <div style="font-size:11px;color:#909399;margin-top:2px;max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" :title="stats.latestBatchName">{{ stats.latestBatchName }}</div>
+            <div
+              style="font-size:11px;color:#909399;margin-top:2px;max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"
+              :title="stats.latestBatchName">{{ stats.latestBatchName }}</div>
           </div>
           <div class="stat-card">
             <div class="stat-num" style="color:#e6a23c">{{ stats.pendingItems }}</div>
             <div class="stat-label">待报</div>
-            <div style="font-size:11px;color:#909399;margin-top:2px;max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" :title="stats.latestBatchName">{{ stats.latestBatchName }}</div>
+            <div
+              style="font-size:11px;color:#909399;margin-top:2px;max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"
+              :title="stats.latestBatchName">{{ stats.latestBatchName }}</div>
           </div>
           <div class="stat-card">
             <div class="stat-num" style="color:#67c23a">{{ stats.doneItems }}</div>
             <div class="stat-label">已完</div>
-            <div style="font-size:11px;color:#909399;margin-top:2px;max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" :title="stats.latestBatchName">{{ stats.latestBatchName }}</div>
+            <div
+              style="font-size:11px;color:#909399;margin-top:2px;max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"
+              :title="stats.latestBatchName">{{ stats.latestBatchName }}</div>
           </div>
         </div>
         <div class="card">
           <table v-if="batches.length">
-            <thead><tr><th>批次名称</th><th>到货时间</th><th>货品</th><th>创建时间</th></tr></thead>
+            <thead>
+              <tr>
+                <th>批次名称</th>
+                <th>到货时间</th>
+                <th>货品</th>
+                <th>创建时间</th>
+              </tr>
+            </thead>
             <tbody>
-              <tr v-for="b in batches.slice(0,10)" :key="b.id">
-                <td>{{ b.name }}</td><td>{{ b.arrival_time }}</td><td>{{ b.item_count }}</td><td>{{ b.created_at }}</td>
+              <tr v-for="b in batches.slice(0, 10)" :key="b.id">
+                <td>{{ b.name }}</td>
+                <td>{{ b.arrival_time }}</td>
+                <td>{{ b.item_count }}</td>
+                <td>{{ b.created_at }}</td>
               </tr>
             </tbody>
           </table>
@@ -64,7 +83,7 @@
       </div>
 
       <!-- 分单管理 -->
-      <div v-if="currentPage==='batches'">
+      <div v-if="currentPage === 'batches'">
         <h2 class="page-title">分单管理</h2>
         <div class="batch-layout">
           <!-- 批次选择下拉栏 -->
@@ -76,9 +95,11 @@
                 {{ b.name }} (到货: {{ b.arrival_time }} | {{ b.item_count }} 个货)
               </option>
             </select>
-            <button class="btn btn-sm btn-primary" @click="showBatchForm=true" style="margin-left:10px">+ 新建</button>
-            <button class="btn btn-sm" @click="openReportForSelected" style="margin-left:6px" :disabled="!selectedBatchId">明细</button>
-            <button class="btn btn-sm btn-danger" @click="deleteBatch(selectedBatchId)" style="margin-left:6px" :disabled="!selectedBatchId">删除</button>
+            <button class="btn btn-sm btn-primary" @click="showBatchForm = true" style="margin-left:10px">+ 新建</button>
+            <button class="btn btn-sm" @click="openReportForSelected" style="margin-left:6px"
+              :disabled="!selectedBatchId">明细</button>
+            <button class="btn btn-sm btn-danger" @click="deleteBatch(selectedBatchId)" style="margin-left:6px"
+              :disabled="!selectedBatchId">删除</button>
           </div>
 
           <!-- 右：货品表格 -->
@@ -89,7 +110,7 @@
                 <strong>货品列表</strong>
                 <!-- 添加货品已移除，所有货品类型自动显示 -->
               </div>
-              <div v-if="items.length===0" class="empty-hint">暂无货品</div>
+              <div v-if="items.length === 0" class="empty-hint">暂无货品</div>
               <div v-else class="matrix-table-wrap">
                 <table class="matrix-table">
                   <thead>
@@ -98,7 +119,8 @@
                       <th class="col-unit">单位</th>
                       <th v-for="emp in matrixEmployees" :key="emp.id" class="col-emp" colspan="2">
                         <div class="emp-header-name">{{ emp.name }}</div>
-                        <div class="emp-header-sub"><span class="sum-sub-alloc col-type-alloc">分货</span><span class="sum-sub-div">/</span><span class="sum-sub-actual col-type-actual">报货</span></div>
+                        <div class="emp-header-sub"><span class="sum-sub-alloc col-type-alloc">分货</span><span
+                            class="sum-sub-div">/</span><span class="sum-sub-actual col-type-actual">报货</span></div>
                       </th>
                       <th class="col-total col-type-alloc">总分货</th>
                       <th class="col-total col-type-actual">总报货</th>
@@ -112,19 +134,26 @@
                       <td class="item-name-cell" @click="showItemDetail(item)"><strong>{{ item.name }}</strong></td>
                       <td>{{ item.unit }}</td>
                       <template v-for="emp in matrixEmployees" :key="emp.id">
-                        <td class="cell-qty-alloc col-type-alloc" @mouseenter="onCellEnter($event, item, emp)" @mouseleave="onCellLeave($event)">
-                          <input type="number"
-                                 :value="getItemQty(item, emp.id)"
-                                 @change="saveEdit(item, emp.id, $event.target.value)"
-                                 step="any" min="0" class="cell-input" />
+                        <td class="cell-qty-alloc col-type-alloc" @mouseenter="onCellEnter($event, item, emp)"
+                          @mouseleave="onCellLeave($event)">
+                          <input type="number" :value="getItemQty(item, emp.id)"
+                            @blur="saveEdit(item, emp.id, $event.target.value)" @keyup.enter="$event.target.blur()"
+                            step="any" min="0" class="cell-input" />
                         </td>
-                        <td class="cell-qty-actual col-type-actual" @mouseenter="onCellEnter($event, item, emp)" @mouseleave="onCellLeave($event)">
+                        <td class="cell-qty-actual col-type-actual" @mouseenter="onCellEnter($event, item, emp)"
+                          @mouseleave="onCellLeave($event)">
                           <span class="actual-qty">{{ getItemActual(item, emp.id) }}</span>
                         </td>
                       </template>
-                      <td class="cell-total col-type-alloc" @mouseenter="onCellEnter($event, item, null)" @mouseleave="onCellLeave($event)">{{ getItemTotal(item) }}</td>
-                      <td class="cell-total cell-total-actual col-type-actual" @mouseenter="onCellEnter($event, item, null)" @mouseleave="onCellLeave($event)">{{ getItemActualTotal(item) }}</td>
-                      <td><span :class="'status-badge ' + (item.status==='未分配' ? 'status-pending' : item.status==='未报货' ? 'status-warn' : 'status-ok')">{{ item.status }}</span></td>
+                      <td class="cell-total col-type-alloc" @mouseenter="onCellEnter($event, item, null)"
+                        @mouseleave="onCellLeave($event)">{{
+                        getItemTotal(item) }}</td>
+                      <td class="cell-total cell-total-actual col-type-actual"
+                        @mouseenter="onCellEnter($event, item, null)" @mouseleave="onCellLeave($event)">{{
+                        getItemActualTotal(item) }}</td>
+                      <td><span
+                          :class="'status-badge ' + (item.status === '未分配' ? 'status-pending' : item.status === '未报货' ? 'status-warn' : 'status-ok')">{{
+                          item.status }}</span></td>
                       <td class="cell-remark">{{ item.remark || '无备注' }}</td>
                       <td>
                         <div class="action-group">
@@ -138,11 +167,17 @@
                       <td><strong>合计</strong></td>
                       <td></td>
                       <template v-for="emp in matrixEmployees" :key="emp.id">
-                        <td class="cell-total col-type-alloc" @mouseenter="onCellEnter($event, null, emp)" @mouseleave="onCellLeave($event)">{{ getColumnTotal(emp.id) }}</td>
-                        <td class="cell-total cell-total-actual col-type-actual" @mouseenter="onCellEnter($event, null, emp)" @mouseleave="onCellLeave($event)">{{ getMatrixColumnActualTotal(emp.id) }}</td>
+                        <td class="cell-total col-type-alloc" @mouseenter="onCellEnter($event, null, emp)"
+                          @mouseleave="onCellLeave($event)">{{ getColumnTotal(emp.id) }}</td>
+                        <td class="cell-total cell-total-actual col-type-actual"
+                          @mouseenter="onCellEnter($event, null, emp)" @mouseleave="onCellLeave($event)">{{
+                          getMatrixColumnActualTotal(emp.id) }}</td>
                       </template>
-                      <td class="cell-total col-type-alloc" @mouseenter="onCellEnter($event, null, null)" @mouseleave="onCellLeave($event)">{{ getGrandTotal() }}</td>
-                      <td class="cell-total cell-total-actual col-type-actual" @mouseenter="onCellEnter($event, null, null)" @mouseleave="onCellLeave($event)">{{ getMatrixGrandActualTotal() }}</td>
+                      <td class="cell-total col-type-alloc" @mouseenter="onCellEnter($event, null, null)"
+                        @mouseleave="onCellLeave($event)">{{ getGrandTotal() }}</td>
+                      <td class="cell-total cell-total-actual col-type-actual"
+                        @mouseenter="onCellEnter($event, null, null)" @mouseleave="onCellLeave($event)">{{
+                        getMatrixGrandActualTotal() }}</td>
                       <td></td>
                       <td></td>
                     </tr>
@@ -150,19 +185,22 @@
                 </table>
               </div>
               <!-- Tooltip -->
-              <div class="matrix-tooltip" v-if="tooltip.visible" :style="{left: tooltip.x+'px', top: tooltip.y+'px'}">{{ tooltip.text }}</div>
+              <div class="matrix-tooltip" v-if="tooltip.visible" :style="{ left: tooltip.x + 'px', top: tooltip.y + 'px' }">{{
+                tooltip.text
+                }}</div>
             </template>
           </div>
         </div>
       </div>
 
       <!-- 货品种类管理 -->
-      <div v-if="currentPage==='cargoTypes'">
+      <div v-if="currentPage === 'cargoTypes'">
         <h2 class="page-title">货品种类管理</h2>
         <div class="card">
           <div style="display:flex;gap:8px;margin-bottom:12px">
             <input v-model="cargoForm.name" placeholder="种类名称" style="max-width:200px" />
-            <input v-model="cargoForm.default_unit" list="default-unit-list" placeholder="默认单位" style="max-width:200px" autocomplete="off" />
+            <input v-model="cargoForm.default_unit" list="default-unit-list" placeholder="默认单位" style="max-width:200px"
+              autocomplete="off" />
             <datalist id="default-unit-list">
               <option v-for="ut in unitTypes" :key="ut.id" :value="ut.name">{{ ut.name }}</option>
             </datalist>
@@ -170,10 +208,19 @@
           </div>
           <p v-if="cargoMsg" style="color:#67c23a">{{ cargoMsg }}</p>
           <table class="data-table">
-            <thead><tr><th>ID</th><th>种类名称</th><th>默认单位</th><th>操作</th></tr></thead>
+            <thead>
+              <tr>
+                <th>ID</th>
+                <th>种类名称</th>
+                <th>默认单位</th>
+                <th>操作</th>
+              </tr>
+            </thead>
             <tbody>
               <tr v-for="ct in cargoTypes" :key="ct.id">
-                <td>{{ ct.id }}</td><td>{{ ct.name }}</td><td>{{ ct.default_unit }}</td>
+                <td>{{ ct.id }}</td>
+                <td>{{ ct.name }}</td>
+                <td>{{ ct.default_unit }}</td>
                 <td><button class="btn btn-sm btn-danger" @click="deleteCargoType(ct.id)">删除</button></td>
               </tr>
             </tbody>
@@ -185,27 +232,54 @@
       <div v-if="currentPage==='employeeMgmt'">
         <h2 class="page-title">人员管理</h2>
         <div class="card">
-          <div style="display:flex;gap:8px;margin-bottom:12px">
-            <input v-model="empForm.display_name" placeholder="姓名" style="max-width:150px" />
-            <input v-model="empForm.username" placeholder="登录名" style="max-width:150px" />
-            <input v-model="empForm.password" type="password" placeholder="密码" style="max-width:150px" />
+          <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;">
+            <input v-model="empForm.display_name" placeholder="员工姓名" style="max-width:150px" />
+            <input v-model="empForm.username" type="number" placeholder="手机号(即登录账号)" style="max-width:180px" />
+            <input v-model="empForm.password" type="password" placeholder="密码(默认123456)" style="max-width:150px" />
             <button class="btn btn-primary btn-sm" @click="addEmployee">添加</button>
           </div>
-          <p v-if="empMsg" style="color:#67c23a">{{ empMsg }}</p>
+          <p v-if="empMsg" style="color:#67c23a;margin-bottom:10px;">{{ empMsg }}</p>
           <table class="data-table">
-            <thead><tr><th>ID</th><th>姓名</th><th>登录</th><th>角色</th><th>操作</th></tr></thead>
+            <thead><tr><th>ID</th><th>姓名</th><th>手机号(登录账号)</th><th>角色</th><th>操作</th></tr></thead>
             <tbody>
               <tr v-for="e in employees" :key="e.id">
-                <td>{{ e.id }}</td><td>{{ e.display_name }}</td><td>{{ e.username }}</td><td>{{ e.role }}</td>
-                <td><button class="btn btn-sm btn-danger" @click="deleteEmployee(e.id)">删除</button></td>
+                <td>{{ e.id }}</td><td>{{ e.display_name }}</td><td>{{ e.username }}</td>
+                <td><span :style="e.role === 'admin' ? 'color:#e6a23c;font-weight:bold;' : ''">{{ e.role === 'admin' ? '管理员' : '员工' }}</span></td>
+                <td>
+                  <button class="btn btn-sm" @click="editEmployee(e)" style="margin-right: 6px; border-color: #409eff; color: #409eff;">编辑</button>
+                  <button v-if="e.role !== 'admin'" class="btn btn-sm btn-danger" @click="deleteEmployee(e.id)">删除</button>
+                </td>
               </tr>
             </tbody>
           </table>
         </div>
+
+        <div v-if="showEmpEditModal" class="modal-mask" @click.self="showEmpEditModal=false">
+          <div class="modal-card" style="width: 350px;">
+            <h3>编辑信息</h3>
+            <div class="form-group">
+              <label>姓名</label>
+              <input v-model="empEditForm.display_name" placeholder="姓名" />
+            </div>
+            <div class="form-group">
+              <label>手机号(登录账号)</label>
+              <input v-model="empEditForm.username" type="number" placeholder="11位手机号" />
+            </div>
+            <div class="form-group">
+              <label>新密码</label>
+              <input v-model="empEditForm.password" type="password" placeholder="不填则代表不修改密码" />
+            </div>
+            <div class="modal-actions">
+              <button class="btn" @click="showEmpEditModal=false">取消</button>
+              <button class="btn btn-primary" @click="saveEmployeeEdit">保存修改</button>
+            </div>
+            <p v-if="empEditMsg" style="color:#f56c6c; margin-top: 10px; font-size: 13px;">{{ empEditMsg }}</p>
+          </div>
+        </div>
       </div>
 
       <!-- 单位管理 -->
-      <div v-if="currentPage==='unitTypes'">
+      <div v-if="currentPage === 'unitTypes'">
         <h2 class="page-title">单位管理</h2>
         <div class="card">
           <div style="display:flex;gap:8px;margin-bottom:12px">
@@ -214,10 +288,17 @@
           </div>
           <p v-if="unitMsg" style="color:#67c23a">{{ unitMsg }}</p>
           <table class="data-table">
-            <thead><tr><th>ID</th><th>单位名称</th><th>操作</th></tr></thead>
+            <thead>
+              <tr>
+                <th>ID</th>
+                <th>单位名称</th>
+                <th>操作</th>
+              </tr>
+            </thead>
             <tbody>
               <tr v-for="ut in unitTypes" :key="ut.id">
-                <td>{{ ut.id }}</td><td>{{ ut.name }}</td>
+                <td>{{ ut.id }}</td>
+                <td>{{ ut.name }}</td>
                 <td>
                   <button class="btn btn-sm" @click="editUnitType(ut)">编辑</button>
                   <button class="btn btn-sm btn-danger" @click="deleteUnitType(ut.id)">删除</button>
@@ -229,12 +310,13 @@
       </div>
 
       <!-- 全品类汇总-->
-      <div v-if="currentPage==='summary'">
+      <div v-if="currentPage === 'summary'">
         <h2 class="page-title">全品类汇总</h2>
         <div class="card no-print" style="display:flex;gap:8px;align-items:center;margin-bottom:16px;flex-wrap:wrap">
           <div style="display:flex;align-items:center;gap:8px;flex:1;min-width:200px">
             <label style="font-weight:600;white-space:nowrap;font-size:14px">选择批次:</label>
-            <select v-model="summaryBatchId" @change="onSummaryBatchChange" class="batch-select" style="max-width:300px">
+            <select v-model="summaryBatchId" @change="onSummaryBatchChange" class="batch-select"
+              style="max-width:300px">
               <option value="">-- 请选择批次 --</option>
               <option v-for="b in sortedBatches" :key="b.id" :value="b.id">
                 {{ b.name }} ({{ b.arrival_time }})
@@ -242,9 +324,12 @@
             </select>
           </div>
           <button class="btn btn-primary btn-sm" @click="printPage" :disabled="!summaryData">打印</button>
-          <button class="btn btn-sm" @click="downloadExcel" :disabled="!summaryData" style="background:#67c23a;color:#fff;border-color:#67c23a">下载Excel</button>
+          <button class="btn btn-sm" @click="downloadExcel" :disabled="!summaryData"
+            style="background:#67c23a;color:#fff;border-color:#67c23a">下载Excel</button>
         </div>
-        <div v-if="!summaryData" style="text-align:center;color:#999;padding:60px 20px;font-size:15px">请从分单批次或分单管理中选择一个批次查看汇总</div>
+        <div v-if="!summaryData" style="text-align:center;color:#999;padding:60px 20px;font-size:15px">
+          请从分单批次或分单管理中选择一个批次查看汇总
+        </div>
         <div v-else id="print-zone">
           <table class="summary-table" id="summary-table">
             <thead>
@@ -296,7 +381,7 @@
 
 
       <!-- 分单批次列表 -->
-      <div v-if="currentPage==='batchList'" class="batch-list-page">
+      <div v-if="currentPage === 'batchList'" class="batch-list-page">
         <h2 class="page-title">分单批次</h2>
         <div class="card">
           <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
@@ -320,7 +405,7 @@
                 <td>{{ b.arrival_time }}</td>
                 <td>{{ b.item_count }}</td>
                 <td class="cell-remark">{{ b.batch_remark || '无备注' }}</td>
-                <td>{{ b.created_at?.slice(0,16) }}</td>
+                <td>{{ b.created_at?.slice(0, 16) }}</td>
                 <td>
                   <div class="action-group" style="display:flex;gap:4px;flex-wrap:nowrap">
                     <button class="btn btn-xs btn-primary" @click="goToBatchManagement(b)">分单</button>
@@ -337,7 +422,7 @@
     </main>
 
     <!-- 新建批次弹窗 -->
-    <div v-if="showBatchForm" class="modal-mask" @click.self="showBatchForm=false">
+    <div v-if="showBatchForm" class="modal-mask" @click.self="showBatchForm = false">
       <div class="modal-card">
         <h3>{{ editingBatchId ? '编辑批次' : '新建报货批次' }}</h3>
         <div class="form-group">
@@ -353,8 +438,10 @@
           <input v-model="batchForm.batch_remark" placeholder="备注信息（可选）" />
         </div>
         <div class="modal-actions">
-          <button class="btn" @click="showBatchForm=false">取消</button>
-          <button class="btn btn-primary" @click="editingBatchId ? updateBatch() : createBatch()">{{ editingBatchId ? '保存' : '创建' }}</button>
+          <button class="btn" @click="showBatchForm = false">取消</button>
+          <button class="btn btn-primary" @click="editingBatchId ? updateBatch() : createBatch()">{{ editingBatchId ?
+            '保存' :
+            '创建' }}</button>
         </div>
         <p v-if="batchMsg" :style="batchMsgOk ? 'color:#67c23a' : 'color:#f56c6c'">{{ batchMsg }}</p>
       </div>
@@ -362,8 +449,8 @@
 
 
     <!-- 分货弹窗 -->
-<!-- 分货弹窗 -->
-    <div v-if="showAssignmentModal" class="modal-mask" @click.self="showAssignmentModal=false">
+    <!-- 分货弹窗 -->
+    <div v-if="showAssignmentModal" class="modal-mask" @click.self="showAssignmentModal = false">
       <div class="modal-card">
         <h3>分货货品: {{ assignItem.name }}</h3>
         <div v-for="(a, idx) in assignmentForm" :key="idx" style="display:flex;gap:8px;margin-bottom:8px">
@@ -372,47 +459,54 @@
             <option v-for="e in employees" :key="e.id" :value="e.id">{{ e.display_name }}</option>
           </select>
           <input v-model="a.allocated_quantity" type="number" step="0.1" placeholder="数量" style="width:100px" />
-          <button class="btn btn-sm btn-danger" @click="removeAssignmentRow(idx)" v-if="idx>0"></button>
+          <button class="btn btn-sm btn-danger" @click="removeAssignmentRow(idx)" v-if="idx > 0"></button>
         </div>
         <button class="btn btn-sm" @click="addAssignmentRow" style="margin-bottom:12px">+ 添加分货</button>
         <div class="modal-actions">
-          <button class="btn" @click="showAssignmentModal=false">取消</button>
+          <button class="btn" @click="showAssignmentModal = false">取消</button>
           <button class="btn btn-primary" @click="saveAssignment">保存</button>
         </div>
         <p v-if="assignMsg" style="color:#67c23a">{{ assignMsg }}</p>
       </div>
     </div>
 
-      <!-- 手机端货品详情弹窗 -->
-    <div v-if="itemDetailView" class="modal-mask" @click.self="itemDetailView=null">
+    <!-- 手机端货品详情弹窗 -->
+    <div v-if="itemDetailView" class="modal-mask" @click.self="itemDetailView = null">
       <div class="modal-card modal-card-wide">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
           <h3 style="margin:0">{{ itemDetailView.name }}</h3>
-          <button class="btn btn-sm" @click="itemDetailView=null">关闭</button>
+          <button class="btn btn-sm" @click="itemDetailView = null">关闭</button>
         </div>
         <div style="margin-bottom:12px;font-size:13px;color:#909399;display:flex;gap:16px;flex-wrap:wrap">
           <span>单位: {{ itemDetailView.unit }}</span>
           <span>规格: {{ itemDetailView.spec || '无' }}</span>
           <span>备注: {{ itemDetailView.remark || '无' }}</span>
-          <span :class="'status-badge ' + (itemDetailView.status==='未分配' ? 'status-pending' : itemDetailView.status==='未报货' ? 'status-warn' : 'status-ok')">{{ itemDetailView.status }}</span>
+          <span
+            :class="'status-badge ' + (itemDetailView.status === '未分配' ? 'status-pending' : itemDetailView.status === '未报货' ? 'status-warn' : 'status-ok')">{{
+              itemDetailView.status }}</span>
         </div>
         <div v-if="employees && employees.length" class="mobile-assign-list">
-          <div class="assign-header" style="display:flex;font-weight:600;font-size:13px;color:#666;padding:8px 0;border-bottom:1px solid #eee">
+          <div class="assign-header"
+            style="display:flex;font-weight:600;font-size:13px;color:#666;padding:8px 0;border-bottom:1px solid #eee">
             <span style="flex:1">员工</span>
             <span style="width:80px;text-align:center">分货数量</span>
             <span style="width:80px;text-align:center">已报数量</span>
           </div>
-          <div v-for="emp in employees" :key="emp.id" class="assign-row" style="display:flex;align-items:center;padding:10px 0;border-bottom:1px solid #f0f0f0">
+          <div v-for="emp in employees" :key="emp.id" class="assign-row"
+            style="display:flex;align-items:center;padding:10px 0;border-bottom:1px solid #f0f0f0">
             <span style="flex:1;font-weight:500">{{ emp.display_name || emp.name }}</span>
             <span style="width:80px;text-align:center">
-              <input type="number" :value="getItemQty(itemDetailView, emp.id)"
-                     @change="saveEdit(itemDetailView, emp.id, $event.target.value)"
-                     step="any" min="0" class="cell-input" />
+             <input type="number" :value="getItemQty(itemDetailView, emp.id)"
+       @blur="saveEdit(itemDetailView, emp.id, $event.target.value)"
+       @keyup.enter="$event.target.blur()"
+       step="any" min="0" class="cell-input" />
             </span>
-            <span style="width:80px;text-align:center;color:#67c23a;font-weight:500">{{ getItemActual(itemDetailView, emp.id) }}</span>
+            <span style="width:80px;text-align:center;color:#67c23a;font-weight:500">{{ getItemActual(itemDetailView,
+              emp.id) }}</span>
           </div>
         </div>
-        <div v-if="employees && employees.length" style="margin-top:12px;padding-top:12px;border-top:2px solid #409eff;display:flex;justify-content:space-between;font-weight:600;font-size:14px">
+        <div v-if="employees && employees.length"
+          style="margin-top:12px;padding-top:12px;border-top:2px solid #409eff;display:flex;justify-content:space-between;font-weight:600;font-size:14px">
           <span>合计</span>
           <div style="display:flex;gap:24px">
             <span style="color:#e6a23c">分货: {{ getItemTotal(itemDetailView) }}</span>
@@ -422,11 +516,11 @@
       </div>
     </div>
 
-</div>
+  </div>
 </template>
 
 <script>
-const API = "http://localhost:5000/api"
+const API = "/api"
 
 async function apiGet(url) {
   const r = await fetch(url);
@@ -466,6 +560,9 @@ export default {
       cargoForm: { name: "", default_unit: "" },
       unitForm: { name: "" },
       empForm: { display_name: "", phone: "", username: "", password: "" },
+      showEmpEditModal: false,
+      empEditForm: { id: null, display_name: "", username: "", password: "" },
+      empEditMsg: "",
       cargoMsg: "", empMsg: "", unitMsg: "",
       showBatchForm: false,
       editingBatchId: null,
@@ -652,7 +749,7 @@ export default {
     async createBatch() {
       try {
         this.batchMsg = ""
-        const dateStr = this.batchForm.batch_date || new Date().toISOString().slice(0,10)
+        const dateStr = this.batchForm.batch_date || new Date().toISOString().slice(0, 10)
         const parts = dateStr.split("-")
         const month = parseInt(parts[1])
         const day = parseInt(parts[2])
@@ -690,21 +787,44 @@ export default {
       await this.loadItems(this.selectedBatchId)
       await this.loadBatches()
     },
-    async saveEdit(item, userId, newValue) {
-      const newQty = Number(newValue) || 0
-      const existing = item.assignments || []
-      let assignments = existing.map(a => ({
-        user_id: a.user_id,
-        allocated_quantity: a.user_id === userId ? newQty : (a.allocated_quantity || 0)
-      }))
-      if (!existing.find(a => a.user_id === userId)) {
-        assignments.push({ user_id: userId, allocated_quantity: newQty })
+   async saveEdit(item, userId, newValue) {
+      const newQty = Number(newValue) || 0;
+      
+      // 1. 立即在前端本地更新数值（乐观更新），不刷新整个表格，确保输入焦点不会丢失
+      if (!item.assignments) item.assignments = [];
+      let existingAssign = item.assignments.find(a => a.user_id === userId);
+      
+      // 如果输入的值跟原来一模一样，直接跳过，节省性能
+      if (existingAssign && existingAssign.allocated_quantity === newQty) return;
+      
+      if (existingAssign) {
+        existingAssign.allocated_quantity = newQty;
+      } else {
+        item.assignments.push({ user_id: userId, allocated_quantity: newQty, actual_quantity: null });
       }
+
+      // 自动修正货品状态显示：如果有分配数量了，状态从“未分货”变为“未报货”
+      if (item.status === "未分货" && newQty > 0) {
+        item.status = "未报货";
+      }
+
+      // 2. 构造后端需要的全量分配数组
+      let assignmentsPayload = item.assignments.map(a => ({
+        user_id: a.user_id,
+        allocated_quantity: a.allocated_quantity || 0
+      }));
+
+      // 3. 静默保存到后端
       try {
-        await apiPut(API + "/items/" + item.id + "/assignments", assignments)
-        await this.loadItems(this.selectedBatchId)
+        await apiPut(API + "/items/" + item.id + "/assignments", assignmentsPayload);
+        
+        // 【关键修改】：删掉了 await this.loadItems(...)
+        // 这样表格就不会在每次填数字后重新渲染和打断管理员输入了！
+        
       } catch (e) {
-        console.error("saveEdit failed", e)
+        console.error("saveEdit failed", e);
+        // 可选：如果网络断开，给个小提示
+        alert("保存失败，请检查网络");
       }
     },
     getItemQty(item, userId) {
@@ -811,7 +931,7 @@ export default {
       }
       this.currentPage = "summary"
     },
-        printPage() {
+    printPage() {
       if (!this.summaryData) return
       const table = document.getElementById("summary-table")
       if (!table) return
@@ -859,17 +979,78 @@ export default {
       this.loadUnitTypes()
     },
     async addEmployee() {
-      if (!this.empForm.display_name || !this.empForm.username) return
-      await apiPost(API + "/employees", this.empForm)
-      this.empForm = { display_name: "", username: "", password: "" }
-      this.empMsg = "添加成功"
-      this.loadEmployees()
+      // 增加手机号前端严格校验
+      if (!this.empForm.display_name) {
+        alert("请输入员工姓名");
+        return;
+      }
+      if (!/^1[3-9]\d{9}$/.test(this.empForm.username)) {
+        alert("请输入正确的11位手机号作为账号");
+        return;
+      }
+
+      try {
+        await apiPost(API + "/employees", this.empForm)
+        this.empForm = { display_name: "", username: "", password: "" }
+        this.empMsg = "添加成功！默认密码为123456"
+        this.loadEmployees()
+        // 3秒后清除成功提示
+        setTimeout(() => { this.empMsg = "" }, 3000);
+      } catch (e) {
+        alert(e.message || "添加失败，该手机号可能已存在");
+      }
     },
     async deleteEmployee(id) {
       if (!confirm("确认删除?")) return
       await apiDelete(API + "/employees/" + id)
       this.loadEmployees()
     },
+    // === 新增的编辑人员方法 ===
+    editEmployee(e) {
+      // 点击编辑时，将当前人员的信息赋给弹窗表单
+      this.empEditForm = {
+        id: e.id,
+        display_name: e.display_name,
+        username: e.username,
+        password: "" // 密码默认留空，防止显示乱码
+      };
+      this.empEditMsg = "";
+      this.showEmpEditModal = true;
+    },
+    async saveEmployeeEdit() {
+      // 校验前端格式
+      if (!this.empEditForm.display_name) {
+        this.empEditMsg = "姓名不能为空";
+        return;
+      }
+      if (!/^1[3-9]\d{9}$/.test(this.empEditForm.username)) {
+        this.empEditMsg = "请输入正确的11位手机号作为账号";
+        return;
+      }
+      
+      try {
+        const payload = {
+          display_name: this.empEditForm.display_name,
+          username: this.empEditForm.username,
+        };
+        // 如果输入了密码才提交密码参数
+        if (this.empEditForm.password) {
+          payload.password = this.empEditForm.password;
+        }
+
+        await apiPut(API + "/employees/" + this.empEditForm.id, payload);
+        
+        this.showEmpEditModal = false;
+        this.loadEmployees(); // 重新加载列表
+        
+        // 给个操作成功的绿色提示语
+        this.empMsg = "信息修改成功！";
+        setTimeout(() => { this.empMsg = ""; }, 3000);
+      } catch (e) {
+        this.empEditMsg = e.message || "修改失败，手机号可能被占用";
+      }
+    },
+    // ===========================
     getAlloc(d, userId) {
       if (!d.assignments) return 0
       const a = d.assignments.find(a => a.user_id === userId)
@@ -955,10 +1136,10 @@ export default {
       const cells = Array.from(tr.children)
       const colIdx = cells.indexOf(td)
       // Remove previous highlights
-      document.querySelectorAll('.matrix-table .hover-row').forEach(function(el) {
+      document.querySelectorAll('.matrix-table .hover-row').forEach(function (el) {
         el.classList.remove('hover-row')
       })
-      document.querySelectorAll('.matrix-table .hover-col').forEach(function(el) {
+      document.querySelectorAll('.matrix-table .hover-col').forEach(function (el) {
         el.classList.remove('hover-col')
       })
       // Highlight current row
@@ -974,7 +1155,7 @@ export default {
           }
         }
       }
-                  // Tooltip logic - show only what this cell contains
+      // Tooltip logic - show only what this cell contains
       var isAlloc = td.classList.contains('col-type-alloc')
       var isActual = td.classList.contains('col-type-actual')
       var isTotal = td.classList.contains('cell-total') || td.tagName === 'TH'
@@ -1018,12 +1199,13 @@ export default {
         this.tooltip.x = event.clientX + 12
         this.tooltip.y = event.clientY - 10
         this.tooltip.visible = true
-      }    },
+      }
+    },
     onCellLeave(event) {
-      document.querySelectorAll('.matrix-table .hover-row').forEach(function(el) {
+      document.querySelectorAll('.matrix-table .hover-row').forEach(function (el) {
         el.classList.remove('hover-row')
       })
-      document.querySelectorAll('.matrix-table .hover-col').forEach(function(el) {
+      document.querySelectorAll('.matrix-table .hover-col').forEach(function (el) {
         el.classList.remove('hover-col')
       })
       this.tooltip.visible = false
@@ -1033,81 +1215,397 @@ export default {
 </script>
 
 <style>
-* { box-sizing: border-box; margin: 0; padding: 0; }
-body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #f5f6fa; color: #333; }
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
 
-.admin-layout { display: flex; height: 100vh; }
-.sidebar { width: 220px; background: #1e2a3a; color: #ccc; display: flex; flex-direction: column; flex-shrink: 0; }
-.sidebar-logo { padding: 20px; font-size: 18px; font-weight: bold; color: #fff; border-bottom: 1px solid #2a3a4a; display: flex; justify-content: space-between; align-items: center; }
-.mobile-header { display: none; }
-.hamburger { display: none; }
-.item-name-cell { cursor: default; }
-.sidebar-nav { flex: 1; padding: 12px 0; overflow-y: auto; }
-.sidebar-nav a { display: block; padding: 10px 20px; color: #aaa; cursor: pointer; text-decoration: none; font-size: 14px; transition: 0.2s; }
-.sidebar-nav a:hover { background: #2a3a4a; color: #fff; }
-.sidebar-nav a.active { background: #3a4a5a; color: #fff; border-left: 3px solid #409eff; }
-.sidebar-section-label { padding: 12px 20px 4px; font-size: 12px; color: #888; text-transform: uppercase; letter-spacing: 1px; border-top: 1px solid #2a3a4a; margin-top: 8px; }
-.sidebar-footer { padding: 16px 20px; border-top: 1px solid #2a3a4a; display: flex; justify-content: space-between; align-items: center; font-size: 13px; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  background: #f5f6fa;
+  color: #333;
+}
 
-.main-content { flex: 1; padding: 24px; overflow-y: auto; }
-.page-title { font-size: 22px; margin-bottom: 20px; }
+.admin-layout {
+  display: flex;
+  height: 100vh;
+}
 
-.stats-row { display: flex; gap: 16px; margin-bottom: 24px; }
-.stat-card { flex: 1; background: #fff; border-radius: 8px; padding: 20px; text-align: center; box-shadow: 0 2px 8px rgba(0,0,0,0.06); }
-.stat-num { font-size: 32px; font-weight: bold; color: #409eff; }
-.stat-label { font-size: 13px; color: #999; margin-top: 4px; }
-.card { background: #fff; border-radius: 8px; padding: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.06); margin-bottom: 16px; }
-.card h3 { margin-bottom: 12px; font-size: 16px; }
+.sidebar {
+  width: 220px;
+  background: #1e2a3a;
+  color: #ccc;
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+}
 
-.data-table { width: 100%; border-collapse: collapse; font-size: 14px; }
-.data-table th, .data-table td { padding: 8px 10px; text-align: left; border-bottom: 1px solid #eee; }
-.data-table th { background: #fafafa; font-weight: 600; color: #666; }
-.data-table tr:hover { background: #f8f9fb; }
+.sidebar-logo {
+  padding: 20px;
+  font-size: 18px;
+  font-weight: bold;
+  color: #fff;
+  border-bottom: 1px solid #2a3a4a;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
 
-.batch-layout { display: flex; flex-direction: column; gap: 16px; }
+.mobile-header {
+  display: none;
+}
 
-.batch-right { flex: 1; background: #fff; border-radius: 8px; padding: 16px; box-shadow: 0 2px 8px rgba(0,0,0,0.06); overflow-x: auto; }
-.batch-item { padding: 12px; border-radius: 6px; cursor: pointer; margin-bottom: 8px; border: 1px solid #eee; transition: 0.2s; }
-.batch-item:hover { border-color: #409eff; }
-.batch-item.active { border-color: #409eff; background: #ecf5ff; }
-.batch-item-name { font-weight: 600; font-size: 15px; }
-.batch-item-sub { font-size: 12px; color: #888; margin-top: 2px; }
-.batch-item-meta { font-size: 11px; color: #aaa; margin-top: 2px; }
-.batch-item-actions { margin-top: 6px; display: flex; gap: 6px; }
+.hamburger {
+  display: none;
+}
 
-.empty-hint { text-align: center; color: #999; padding: 60px 20px; font-size: 15px; }
+.item-name-cell {
+  cursor: default;
+}
 
-.btn { display: inline-block; padding: 6px 14px; border: 1px solid #dcdfe6; border-radius: 4px; background: #fff; cursor: pointer; font-size: 13px; transition: 0.2s; }
-.btn:hover { border-color: #409eff; color: #409eff; }
-.btn-primary { background: #409eff; border-color: #409eff; color: #fff; }
-.btn-primary:hover { background: #66b1ff; border-color: #66b1ff; color: #fff; }
-.btn-danger { background: #f56c6c; border-color: #f56c6c; color: #fff; }
-.btn-danger:hover { background: #f78989; border-color: #f78989; color: #fff; }
-.btn-sm { padding: 4px 10px; font-size: 12px; }
-.btn-xs { padding: 2px 8px; font-size: 11px; }
+.sidebar-nav {
+  flex: 1;
+  padding: 12px 0;
+  overflow-y: auto;
+}
 
-.status-badge { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 11px; }
-.status-pending { background: #fdf6ec; color: #e6a23c; }
-.status-warn { background: #fef0f0; color: #f56c6c; }
-.status-ok { background: #f0f9eb; color: #67c23a; }
+.sidebar-nav a {
+  display: block;
+  padding: 10px 20px;
+  color: #aaa;
+  cursor: pointer;
+  text-decoration: none;
+  font-size: 14px;
+  transition: 0.2s;
+}
 
-.modal-mask { position: fixed; inset: 0; background: rgba(0,0,0,0.4); display: flex; align-items: center; justify-content: center; z-index: 100; }
-.modal-card { background: #fff; border-radius: 10px; padding: 24px; width: 480px; max-width: 90vw; max-height: 80vh; overflow-y: auto; box-shadow: 0 8px 30px rgba(0,0,0,0.15); }
-.modal-card h3 { margin-bottom: 16px; font-size: 18px; }
-.modal-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 16px; }
+.sidebar-nav a:hover {
+  background: #2a3a4a;
+  color: #fff;
+}
 
-.form-group { margin-bottom: 12px; }
-.form-group label { display: block; font-size: 13px; color: #666; margin-bottom: 4px; }
-.form-group input, .form-group select { width: 100%; padding: 8px 10px; border: 1px solid #dcdfe6; border-radius: 4px; font-size: 14px; outline: none; }
-.form-group input:focus, .form-group select:focus { border-color: #409eff; }
+.sidebar-nav a.active {
+  background: #3a4a5a;
+  color: #fff;
+  border-left: 3px solid #409eff;
+}
 
-@media print { .no-print { display: none !important; } }
-#print-zone h3 { margin-bottom: 8px; }
-#print-zone p { color: #888; margin-bottom: 12px; font-size: 14px; }
+.sidebar-section-label {
+  padding: 12px 20px 4px;
+  font-size: 12px;
+  color: #888;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  border-top: 1px solid #2a3a4a;
+  margin-top: 8px;
+}
 
-::-webkit-scrollbar { width: 6px; }
-::-webkit-scrollbar-thumb { background: #ccc; border-radius: 3px; }
-::-webkit-scrollbar-track { background: transparent; }
+.sidebar-footer {
+  padding: 16px 20px;
+  border-top: 1px solid #2a3a4a;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 13px;
+}
+
+.main-content {
+  flex: 1;
+  padding: 24px;
+  overflow-y: auto;
+}
+
+.page-title {
+  font-size: 22px;
+  margin-bottom: 20px;
+}
+
+.stats-row {
+  display: flex;
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+.stat-card {
+  flex: 1;
+  background: #fff;
+  border-radius: 8px;
+  padding: 20px;
+  text-align: center;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+}
+
+.stat-num {
+  font-size: 32px;
+  font-weight: bold;
+  color: #409eff;
+}
+
+.stat-label {
+  font-size: 13px;
+  color: #999;
+  margin-top: 4px;
+}
+
+.card {
+  background: #fff;
+  border-radius: 8px;
+  padding: 20px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+  margin-bottom: 16px;
+}
+
+.card h3 {
+  margin-bottom: 12px;
+  font-size: 16px;
+}
+
+.data-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+
+.data-table th,
+.data-table td {
+  padding: 8px 10px;
+  text-align: left;
+  border-bottom: 1px solid #eee;
+}
+
+.data-table th {
+  background: #fafafa;
+  font-weight: 600;
+  color: #666;
+}
+
+.data-table tr:hover {
+  background: #f8f9fb;
+}
+
+.batch-layout {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.batch-right {
+  flex: 1;
+  background: #fff;
+  border-radius: 8px;
+  padding: 16px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+  overflow-x: auto;
+}
+
+.batch-item {
+  padding: 12px;
+  border-radius: 6px;
+  cursor: pointer;
+  margin-bottom: 8px;
+  border: 1px solid #eee;
+  transition: 0.2s;
+}
+
+.batch-item:hover {
+  border-color: #409eff;
+}
+
+.batch-item.active {
+  border-color: #409eff;
+  background: #ecf5ff;
+}
+
+.batch-item-name {
+  font-weight: 600;
+  font-size: 15px;
+}
+
+.batch-item-sub {
+  font-size: 12px;
+  color: #888;
+  margin-top: 2px;
+}
+
+.batch-item-meta {
+  font-size: 11px;
+  color: #aaa;
+  margin-top: 2px;
+}
+
+.batch-item-actions {
+  margin-top: 6px;
+  display: flex;
+  gap: 6px;
+}
+
+.empty-hint {
+  text-align: center;
+  color: #999;
+  padding: 60px 20px;
+  font-size: 15px;
+}
+
+.btn {
+  display: inline-block;
+  padding: 6px 14px;
+  border: 1px solid #dcdfe6;
+  border-radius: 4px;
+  background: #fff;
+  cursor: pointer;
+  font-size: 13px;
+  transition: 0.2s;
+}
+
+.btn:hover {
+  border-color: #409eff;
+  color: #409eff;
+}
+
+.btn-primary {
+  background: #409eff;
+  border-color: #409eff;
+  color: #fff;
+}
+
+.btn-primary:hover {
+  background: #66b1ff;
+  border-color: #66b1ff;
+  color: #fff;
+}
+
+.btn-danger {
+  background: #f56c6c;
+  border-color: #f56c6c;
+  color: #fff;
+}
+
+.btn-danger:hover {
+  background: #f78989;
+  border-color: #f78989;
+  color: #fff;
+}
+
+.btn-sm {
+  padding: 4px 10px;
+  font-size: 12px;
+}
+
+.btn-xs {
+  padding: 2px 8px;
+  font-size: 11px;
+}
+
+.status-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-size: 11px;
+}
+
+.status-pending {
+  background: #fdf6ec;
+  color: #e6a23c;
+}
+
+.status-warn {
+  background: #fef0f0;
+  color: #f56c6c;
+}
+
+.status-ok {
+  background: #f0f9eb;
+  color: #67c23a;
+}
+
+.modal-mask {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+}
+
+.modal-card {
+  background: #fff;
+  border-radius: 10px;
+  padding: 24px;
+  width: 480px;
+  max-width: 90vw;
+  max-height: 80vh;
+  overflow-y: auto;
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.15);
+}
+
+.modal-card h3 {
+  margin-bottom: 16px;
+  font-size: 18px;
+}
+
+.modal-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  margin-top: 16px;
+}
+
+.form-group {
+  margin-bottom: 12px;
+}
+
+.form-group label {
+  display: block;
+  font-size: 13px;
+  color: #666;
+  margin-bottom: 4px;
+}
+
+.form-group input,
+.form-group select {
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid #dcdfe6;
+  border-radius: 4px;
+  font-size: 14px;
+  outline: none;
+}
+
+.form-group input:focus,
+.form-group select:focus {
+  border-color: #409eff;
+}
+
+@media print {
+  .no-print {
+    display: none !important;
+  }
+}
+
+#print-zone h3 {
+  margin-bottom: 8px;
+}
+
+#print-zone p {
+  color: #888;
+  margin-bottom: 12px;
+  font-size: 14px;
+}
+
+::-webkit-scrollbar {
+  width: 6px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #ccc;
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
 
 /* ===== 矩阵表格样式 ===== */
 .batch-select-bar {
@@ -1116,9 +1614,10 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-
   padding: 12px 16px;
   background: #fff;
   border-radius: 8px;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
   margin-bottom: 16px;
 }
+
 .batch-select {
   flex: 1;
   max-width: 500px;
@@ -1129,42 +1628,57 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-
   outline: none;
   background: #fff;
 }
-.batch-select:focus { border-color: #409eff; }
+
+.batch-select:focus {
+  border-color: #409eff;
+}
 
 /* 矩阵表格 - 首列固定 */
 
 /* Column type background colors - matrix table */
 .matrix-table .col-type-alloc {
-  background-color: #fff8e1 !important;  /* light yellow for ?货 */
+  background-color: #fff8e1 !important;
+  /* light yellow for ?货 */
 }
+
 .matrix-table .col-type-actual {
-  background-color: #e8f5e9 !important;  /* light green for 报货 */
+  background-color: #e8f5e9 !important;
+  /* light green for 报货 */
 }
+
 .matrix-table th.col-type-alloc {
   background-color: #fff3cd !important;
 }
+
 .matrix-table th.col-type-actual {
   background-color: #c8e6c9 !important;
 }
+
 /* Hover highlight for row and column */
 .matrix-table tbody tr.hover-row td {
   background-color: #e3e8f0 !important;
 }
+
 .matrix-table tbody tr.hover-row td.col-type-alloc {
   background-color: #ffe8b0 !important;
 }
+
 .matrix-table tbody tr.hover-row td.col-type-actual {
   background-color: #c8e6c9 !important;
 }
+
 .matrix-table td.hover-col {
   background-color: #d0d8e8 !important;
 }
+
 .matrix-table td.col-type-alloc.hover-col {
   background-color: #ffd699 !important;
 }
+
 .matrix-table td.col-type-actual.hover-col {
   background-color: #a5d6a7 !important;
 }
+
 /* Tooltip */
 .matrix-tooltip {
   position: fixed;
@@ -1185,37 +1699,47 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-
 .matrix-table .col-type-alloc {
   background-color: #fff8e1 !important;
 }
+
 .matrix-table .col-type-actual {
   background-color: #e8f5e9 !important;
 }
+
 .matrix-table th.col-type-alloc {
   background-color: #fff3cd !important;
 }
+
 .matrix-table th.col-type-actual {
   background-color: #c8e6c9 !important;
 }
+
 /* Hover highlight */
 .matrix-table tbody tr.hover-row td,
 .matrix-table tfoot tr.hover-row td {
   background-color: #dde4f0 !important;
 }
+
 .matrix-table tbody tr.hover-row td.col-type-alloc,
 .matrix-table tfoot tr.hover-row td.col-type-alloc {
   background-color: #ffe8b0 !important;
 }
+
 .matrix-table tbody tr.hover-row td.col-type-actual,
 .matrix-table tfoot tr.hover-row td.col-type-actual {
   background-color: #c8e6c9 !important;
 }
+
 .matrix-table td.hover-col {
   background-color: #d0d8e8 !important;
 }
+
 .matrix-table td.col-type-alloc.hover-col {
   background-color: #ffd699 !important;
 }
+
 .matrix-table td.col-type-actual.hover-col {
   background-color: #a5d6a7 !important;
 }
+
 .matrix-table th.hover-col {
   background-color: #c0c8e0 !important;
 }
@@ -1234,7 +1758,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-
   white-space: nowrap;
   max-width: 320px;
   line-height: 1.6;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
 }
 
 .matrix-table-wrap {
@@ -1242,10 +1766,12 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-
   margin-top: 4px;
   position: relative;
 }
+
 .matrix-table {
   border-collapse: separate;
   border-spacing: 0;
 }
+
 .matrix-table th.col-name,
 .matrix-table td:first-child {
   position: sticky;
@@ -1254,25 +1780,30 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-
   background: #fff;
   border-right: 2px solid #e8e8e8;
 }
+
 .matrix-table thead th.col-name {
   z-index: 3;
   background: #f5f7fa;
 }
+
 .matrix-table tfoot td:first-child {
   background: #fafbfc;
 }
+
 .matrix-table tbody tr:hover td:first-child {
   background: #f0f7ff;
 }
+
 .batch-select-bar {
   display: flex;
   align-items: center;
   padding: 12px 16px;
   background: #fff;
   border-radius: 8px;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
   margin-bottom: 16px;
 }
+
 .batch-select {
   flex: 1;
   max-width: 500px;
@@ -1283,7 +1814,10 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-
   outline: none;
   background: #fff;
 }
-.batch-select:focus { border-color: #409eff; }
+
+.batch-select:focus {
+  border-color: #409eff;
+}
 
 /* 矩阵表格 - 首列固定 */
 .matrix-table-wrap {
@@ -1291,10 +1825,12 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-
   margin-top: 4px;
   position: relative;
 }
+
 .matrix-table {
   border-collapse: separate;
   border-spacing: 0;
 }
+
 .matrix-table th.col-name,
 .matrix-table td:first-child {
   position: sticky;
@@ -1303,118 +1839,504 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-
   background: #fff;
   border-right: 2px solid #e8e8e8;
 }
+
 .matrix-table thead th.col-name {
   z-index: 3;
   background: #f5f7fa;
 }
+
 .matrix-table tfoot td:first-child {
   background: #fafbfc;
 }
+
 .matrix-table tbody tr:hover td:first-child {
   background: #f0f7ff;
 }
 
-.matrix-table { width: 100%; border-collapse: collapse; font-size: 13px; min-width: 500px; }
-.matrix-table th, .matrix-table td { padding: 3px 3px; text-align: center; white-space: nowrap; border: 1px solid #000; }
-.matrix-table th { background: #d9e1f2; font-weight: 700; color: #333; font-size: 12px; }
-.matrix-table thead th { border-bottom: 2px solid #000; }
-.matrix-table tbody tr:nth-child(even) { background: #f8f9fc; }
-.matrix-table tfoot td { background: #eef1f8; font-weight: 600; border-top: 2px solid #000; }
-.matrix-table tbody tr:hover { background: #eef2fa; }
-.matrix-table .col-name { text-align: left; min-width: 65px; }
-.matrix-table .col-unit { min-width: 32px; }
-.matrix-table .col-emp { min-width: 55px; background: #ecf5ff; color: #409eff; font-weight: 600; padding: 2px 2px !important; font-size: 11px; }
-.emp-header-name { font-size: 11px; }
-.emp-header-sub { font-size: 9px; font-weight: 400; color: #99c9ff; margin-top: 1px; }
-.matrix-table .col-total { min-width: 35px; background: #fdf6ec; color: #e6a23c; font-weight: 600; }
-.matrix-table .col-status { min-width: 30px; }
-.matrix-table .col-remark { min-width: 50px; font-size: 11px; color: #909399; }
-.matrix-table .cell-remark { max-width: 55px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; color: #666; }
-.cell-input { width: 36px; padding: 2px 1px; border: 1px solid #dcdfe6; border-radius: 2px; font-size: 12px; text-align: center; outline: none; background: #fff; }
-.cell-qty { padding: 2px 2px !important; vertical-align: top; }
-.cell-qty-row { margin-bottom: 1px; }
-.cell-qty-alloc { padding: 1px 1px !important; vertical-align: top; }
-.cell-qty-actual { padding: 1px 2px !important; vertical-align: top; min-width: 28px; }
-.cell-actual-row { padding-top: 1px; border-top: 1px dashed #ddd; }
-.actual-qty { font-size: 11px; color: #67c23a; font-weight: 600; }
-.actual-qty::before { font-size: 9px; color: #999; margin-right: 1px; }
-.cell-input:focus { border-color: #409eff; box-shadow: 0 0 0 2px rgba(64,158,255,0.2); }
-.cell-input:hover { border-color: #c0c4cc; }
+.matrix-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+  min-width: 500px;
+}
+
+.matrix-table th,
+.matrix-table td {
+  padding: 3px 3px;
+  text-align: center;
+  white-space: nowrap;
+  border: 1px solid #000;
+}
+
+.matrix-table th {
+  background: #d9e1f2;
+  font-weight: 700;
+  color: #333;
+  font-size: 12px;
+}
+
+.matrix-table thead th {
+  border-bottom: 2px solid #000;
+}
+
+.matrix-table tbody tr:nth-child(even) {
+  background: #f8f9fc;
+}
+
+.matrix-table tfoot td {
+  background: #eef1f8;
+  font-weight: 600;
+  border-top: 2px solid #000;
+}
+
+.matrix-table tbody tr:hover {
+  background: #eef2fa;
+}
+
+.matrix-table .col-name {
+  text-align: left;
+  min-width: 65px;
+}
+
+.matrix-table .col-unit {
+  min-width: 32px;
+}
+
+.matrix-table .col-emp {
+  min-width: 55px;
+  background: #ecf5ff;
+  color: #409eff;
+  font-weight: 600;
+  padding: 2px 2px !important;
+  font-size: 11px;
+}
+
+.emp-header-name {
+  font-size: 11px;
+}
+
+.emp-header-sub {
+  font-size: 9px;
+  font-weight: 400;
+  color: #99c9ff;
+  margin-top: 1px;
+}
+
+.matrix-table .col-total {
+  min-width: 35px;
+  background: #fdf6ec;
+  color: #e6a23c;
+  font-weight: 600;
+}
+
+.matrix-table .col-status {
+  min-width: 30px;
+}
+
+.matrix-table .col-remark {
+  min-width: 50px;
+  font-size: 11px;
+  color: #909399;
+}
+
+.matrix-table .cell-remark {
+  max-width: 55px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
+  color: #666;
+}
+
+.cell-input {
+  width: 36px;
+  padding: 2px 1px;
+  border: 1px solid #dcdfe6;
+  border-radius: 2px;
+  font-size: 12px;
+  text-align: center;
+  outline: none;
+  background: #fff;
+}
+
+.cell-qty {
+  padding: 2px 2px !important;
+  vertical-align: top;
+}
+
+.cell-qty-row {
+  margin-bottom: 1px;
+}
+
+.cell-qty-alloc {
+  padding: 1px 1px !important;
+  vertical-align: top;
+}
+
+.cell-qty-actual {
+  padding: 1px 2px !important;
+  vertical-align: top;
+  min-width: 28px;
+}
+
+.cell-actual-row {
+  padding-top: 1px;
+  border-top: 1px dashed #ddd;
+}
+
+.actual-qty {
+  font-size: 11px;
+  color: #67c23a;
+  font-weight: 600;
+}
+
+.actual-qty::before {
+  font-size: 9px;
+  color: #999;
+  margin-right: 1px;
+}
+
+.cell-input:focus {
+  border-color: #409eff;
+  box-shadow: 0 0 0 2px rgba(64, 158, 255, 0.2);
+}
+
+.cell-input:hover {
+  border-color: #c0c4cc;
+}
+
 /* Hide spin buttons */
-.cell-input[type=number] { -moz-appearance: textfield; }
+.cell-input[type=number] {
+  -moz-appearance: textfield;
+}
+
 .cell-input::-webkit-inner-spin-button,
-.cell-input::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
-.matrix-table .col-actions { min-width: 50px; width: 50px; }
-.matrix-table .cell-qty-alloc { font-weight: 500; color: #303133; }
-.matrix-table .cell-qty-actual { font-weight: 500; color: #67c23a; }
-.matrix-table .cell-total { font-weight: 600; color: #e6a23c; }
-.matrix-table .cell-total-actual { font-weight: 600; color: #67c23a; }
-.action-group { display: flex; gap: 4px; justify-content: center; }
+.cell-input::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.matrix-table .col-actions {
+  min-width: 50px;
+  width: 50px;
+}
+
+.matrix-table .cell-qty-alloc {
+  font-weight: 500;
+  color: #303133;
+}
+
+.matrix-table .cell-qty-actual {
+  font-weight: 500;
+  color: #67c23a;
+}
+
+.matrix-table .cell-total {
+  font-weight: 600;
+  color: #e6a23c;
+}
+
+.matrix-table .cell-total-actual {
+  font-weight: 600;
+  color: #67c23a;
+}
+
+.action-group {
+  display: flex;
+  gap: 4px;
+  justify-content: center;
+}
 
 /* ===== 响应式布局 - 手机端===== */
 /* ===== 全品类汇总- 矩阵样式 ===== */
-.summary-table { width: 100%; border-collapse: collapse; font-size: 13px; }
-.summary-table th, .summary-table td { border: 1px solid #000; padding: 2px 3px; text-align: center; font-size: 12px; }
-.summary-table thead th { background: #d9e1f2; font-weight: 700; color: #333; font-size: 11px; border-bottom: 2px solid #000; }
-.summary-table tbody tr:nth-child(even) { background: #f8f9fc; }
-.summary-table tfoot td { background: #eef1f8; font-weight: 600; border-top: 2px solid #000; }
-.sum-col-idx { width: 35px; }
-.sum-col-name { text-align: left; min-width: 60px; width: 60px; }
-.sum-col-unit { width: 35px; }
-.sum-col-emp { min-width: 42px; background: #ecf5ff; padding: 2px 2px !important; font-size: 11px; }
-.sum-col-total { min-width: 38px; background: #fdf6ec; font-weight: 600; font-size: 11px; }
-.sum-emp-name { font-size: 11px; color: #409eff; }
-.sum-emp-sub { font-size: 9px; color: #99c9ff; display: flex; justify-content: center; gap: 1px; margin-top: 1px; }
-.sum-sub-alloc { color: #e6a23c; }
-.sum-sub-div { color: #ccc; }
-.sum-sub-actual { color: #67c23a; }
-.sum-name { text-align: left; font-weight: 500; }
-.sum-idx { color: #909399; font-size: 12px; }
-.sum-unit { font-size: 12px; color: #606266; }
-.sum-cell { font-size: 13px; padding: 6px 4px !important; }
-.sum-cell-alloc { color: #e6a23c; font-weight: 500; }
-.sum-cell-actual { color: #67c23a; font-weight: 500; }
-.sum-total { font-weight: 600; font-size: 13px; }
-.sum-total-alloc { color: #e6a23c; background: #fdf6ec; }
-.sum-total-actual { color: #67c23a; background: #f0f9eb; }
+.summary-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.summary-table th,
+.summary-table td {
+  border: 1px solid #000;
+  padding: 2px 3px;
+  text-align: center;
+  font-size: 12px;
+}
+
+.summary-table thead th {
+  background: #d9e1f2;
+  font-weight: 700;
+  color: #333;
+  font-size: 11px;
+  border-bottom: 2px solid #000;
+}
+
+.summary-table tbody tr:nth-child(even) {
+  background: #f8f9fc;
+}
+
+.summary-table tfoot td {
+  background: #eef1f8;
+  font-weight: 600;
+  border-top: 2px solid #000;
+}
+
+.sum-col-idx {
+  width: 35px;
+}
+
+.sum-col-name {
+  text-align: left;
+  min-width: 60px;
+  width: 60px;
+}
+
+.sum-col-unit {
+  width: 35px;
+}
+
+.sum-col-emp {
+  min-width: 42px;
+  background: #ecf5ff;
+  padding: 2px 2px !important;
+  font-size: 11px;
+}
+
+.sum-col-total {
+  min-width: 38px;
+  background: #fdf6ec;
+  font-weight: 600;
+  font-size: 11px;
+}
+
+.sum-emp-name {
+  font-size: 11px;
+  color: #409eff;
+}
+
+.sum-emp-sub {
+  font-size: 9px;
+  color: #99c9ff;
+  display: flex;
+  justify-content: center;
+  gap: 1px;
+  margin-top: 1px;
+}
+
+.sum-sub-alloc {
+  color: #e6a23c;
+}
+
+.sum-sub-div {
+  color: #ccc;
+}
+
+.sum-sub-actual {
+  color: #67c23a;
+}
+
+.sum-name {
+  text-align: left;
+  font-weight: 500;
+}
+
+.sum-idx {
+  color: #909399;
+  font-size: 12px;
+}
+
+.sum-unit {
+  font-size: 12px;
+  color: #606266;
+}
+
+.sum-cell {
+  font-size: 13px;
+  padding: 6px 4px !important;
+}
+
+.sum-cell-alloc {
+  color: #e6a23c;
+  font-weight: 500;
+}
+
+.sum-cell-actual {
+  color: #67c23a;
+  font-weight: 500;
+}
+
+.sum-total {
+  font-weight: 600;
+  font-size: 13px;
+}
+
+.sum-total-alloc {
+  color: #e6a23c;
+  background: #fdf6ec;
+}
+
+.sum-total-actual {
+  color: #67c23a;
+  background: #f0f9eb;
+}
 
 @media print {
-  .no-print { display: none !important; }
-  .summary-table { font-size: 11px; }
-  .summary-table th, .summary-table td { border-color: #000; padding: 1px 2px; }
+  .no-print {
+    display: none !important;
+  }
+
+  .summary-table {
+    font-size: 11px;
+  }
+
+  .summary-table th,
+  .summary-table td {
+    border-color: #000;
+    padding: 1px 2px;
+  }
 }
 
 @media (max-width: 768px) {
+
   /* 侧边栏*/
-  .sidebar { position: fixed; z-index: 1000; height: 100vh; transform: translateX(-100%); transition: transform 0.25s ease; }
-  .sidebar.open { transform: translateX(0); box-shadow: 4px 0 20px rgba(0,0,0,0.3); }
-  .sidebar-logo { display: flex; justify-content: space-between; align-items: center; }
-  .hamburger { display: inline-block; background: none; border: none; color: #fff; font-size: 22px; cursor: pointer; padding: 0 4px; line-height: 1; }
-  .admin-layout { flex-direction: column; }
-  .main-content { padding: 12px; margin-left: 0; }
-  .mobile-header { display: flex; position: relative; align-items: center; gap: 10px; padding: 8px 0 12px; border-bottom: 1px solid #eee; margin-bottom: 12px; }
-  .mobile-header .hamburger { position: fixed; top: 10px; left: 10px; z-index: 1001; width: 36px; height: 36px; display: flex; align-items: center; justify-content: center; background: rgba(255,255,255,0.95); border-radius: 6px; box-shadow: 0 2px 8px rgba(0,0,0,0.12); color: #333; font-size: 22px; }
-  .mobile-title { font-size: 16px; font-weight: 600; color: #303133; padding-left: 44px; }
+  .sidebar {
+    position: fixed;
+    z-index: 1000;
+    height: 100vh;
+    transform: translateX(-100%);
+    transition: transform 0.25s ease;
+  }
+
+  .sidebar.open {
+    transform: translateX(0);
+    box-shadow: 4px 0 20px rgba(0, 0, 0, 0.3);
+  }
+
+  .sidebar-logo {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+
+  .hamburger {
+    display: inline-block;
+    background: none;
+    border: none;
+    color: #fff;
+    font-size: 22px;
+    cursor: pointer;
+    padding: 0 4px;
+    line-height: 1;
+  }
+
+  .admin-layout {
+    flex-direction: column;
+  }
+
+  .main-content {
+    padding: 12px;
+    margin-left: 0;
+  }
+
+  .mobile-header {
+    display: flex;
+    position: relative;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 0 12px;
+    border-bottom: 1px solid #eee;
+    margin-bottom: 12px;
+  }
+
+  .mobile-header .hamburger {
+    position: fixed;
+    top: 10px;
+    left: 10px;
+    z-index: 1001;
+    width: 36px;
+    height: 36px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(255, 255, 255, 0.95);
+    border-radius: 6px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
+    color: #333;
+    font-size: 22px;
+  }
+
+  .mobile-title {
+    font-size: 16px;
+    font-weight: 600;
+    color: #303133;
+    padding-left: 44px;
+  }
 
   /* 批次选择栏*/
-  .batch-select-bar { flex-wrap: wrap; gap: 8px; padding: 10px 12px; }
-  .batch-select-bar select { flex: 1; min-width: 120px; max-width: none; }
+  .batch-select-bar {
+    flex-wrap: wrap;
+    gap: 8px;
+    padding: 10px 12px;
+  }
+
+  .batch-select-bar select {
+    flex: 1;
+    min-width: 120px;
+    max-width: none;
+  }
 
   /* 矩阵表格 - 手机端端用卡片替代 */
-  .matrix-table-wrap { overflow-x: auto; }
-  .matrix-table { font-size: 12px; min-width: 400px; border: 1px solid #000; }
-  .matrix-table th, .matrix-table td { padding: 2px 2px; border-color: #000; }
-  .matrix-table .col-name { min-width: 70px; }
-  .matrix-table .col-emp { min-width: 50px; font-size: 11px; }
-  .item-name-cell { cursor: pointer; color: #409eff; text-decoration: underline; }
+  .matrix-table-wrap {
+    overflow-x: auto;
+  }
+
+  .matrix-table {
+    font-size: 12px;
+    min-width: 400px;
+    border: 1px solid #000;
+  }
+
+  .matrix-table th,
+  .matrix-table td {
+    padding: 2px 2px;
+    border-color: #000;
+  }
+
+  .matrix-table .col-name {
+    min-width: 70px;
+  }
+
+  .matrix-table .col-emp {
+    min-width: 50px;
+    font-size: 11px;
+  }
+
+  .item-name-cell {
+    cursor: pointer;
+    color: #409eff;
+    text-decoration: underline;
+  }
 
   /* 基础信息表单 */
-  .card .form-inline, .card > div[style*="flex"] { flex-direction: column; align-items: stretch; }
-  .card input { max-width: none !important; width: 100% !important; }
+  .card .form-inline,
+  .card>div[style*="flex"] {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .card input {
+    max-width: none !important;
+    width: 100% !important;
+  }
 
   /* 统计卡片 */
-  .stats-row { flex-wrap: wrap; }
-  .stat-card { min-width: calc(50% - 8px); }
+  .stats-row {
+    flex-wrap: wrap;
+  }
+
+  .stat-card {
+    min-width: calc(50% - 8px);
+  }
 
   /* 分单批次列表 - 卡片布局 */
   .batch-list-page .data-table,
@@ -1425,60 +2347,107 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-
   .batch-list-page .data-table td {
     display: block;
   }
-  .batch-list-page .data-table thead { display: none; }
+
+  .batch-list-page .data-table thead {
+    display: none;
+  }
+
   .batch-list-page .data-table tr {
     background: #fff;
     border-radius: 10px;
-    box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
     padding: 14px 16px;
     margin-bottom: 12px;
     border: 1px solid #eee;
   }
+
   .batch-list-page .data-table td {
     border: none;
     padding: 4px 0;
     font-size: 13px;
     text-align: left;
   }
+
   .batch-list-page .data-table td:first-child {
     font-size: 16px;
     font-weight: 600;
     padding-bottom: 6px;
     color: #303133;
   }
-  .batch-list-page .data-table td:nth-child(2)::before { content: "到货时间: "; color: #909399; font-size: 12px; }
-  .batch-list-page .data-table td:nth-child(3)::before { content: "货品数: "; color: #909399; font-size: 12px; }
-  .batch-list-page .data-table td:nth-child(4)::before { content: "备注: "; color: #909399; font-size: 12px; }
-  .batch-list-page .data-table td:nth-child(5)::before { content: "创建: "; color: #909399; font-size: 12px; }
+
+  .batch-list-page .data-table td:nth-child(2)::before {
+    content: "到货时间: ";
+    color: #909399;
+    font-size: 12px;
+  }
+
+  .batch-list-page .data-table td:nth-child(3)::before {
+    content: "货品数: ";
+    color: #909399;
+    font-size: 12px;
+  }
+
+  .batch-list-page .data-table td:nth-child(4)::before {
+    content: "备注: ";
+    color: #909399;
+    font-size: 12px;
+  }
+
+  .batch-list-page .data-table td:nth-child(5)::before {
+    content: "创建: ";
+    color: #909399;
+    font-size: 12px;
+  }
+
   .batch-list-page .data-table td:last-child {
     padding-top: 10px;
     margin-top: 8px;
     border-top: 1px solid #f0f0f0;
     width: auto;
   }
-  .batch-list-page .data-table .cell-remark { max-width: none; }
+
+  .batch-list-page .data-table .cell-remark {
+    max-width: none;
+  }
 
   /* 弹窗 */
-  .modal-card { width: 95vw; padding: 16px; }
-  .modal-card-wide { width: 95vw; padding: 16px; }
+  .modal-card {
+    width: 95vw;
+    padding: 16px;
+  }
+
+  .modal-card-wide {
+    width: 95vw;
+    padding: 16px;
+  }
 
   /* 全品类汇总*/
-  #print-zone .data-table { font-size: 12px; }
-  #print-zone .data-table th, #print-zone .data-table td { padding: 4px; }
+  #print-zone .data-table {
+    font-size: 12px;
+  }
+
+  #print-zone .data-table th,
+  #print-zone .data-table td {
+    padding: 4px;
+  }
 
   /* 移动端分货列表*/
-  .mobile-assign-list .cell-input { width: 60px; }
+  .mobile-assign-list .cell-input {
+    width: 60px;
+  }
 }
 
 /* ===== 分单批次列表样式 ===== */
-.batch-list-page .data-table td { vertical-align: middle; }
-.batch-list-page .data-table .cell-remark { max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #909399; font-size: 12px; }
+.batch-list-page .data-table td {
+  vertical-align: middle;
+}
+
+.batch-list-page .data-table .cell-remark {
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #909399;
+  font-size: 12px;
+}
 </style>
-
-
-
-
-
-
-
-

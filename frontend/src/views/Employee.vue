@@ -80,7 +80,7 @@ import { ref, computed, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
 const router = useRouter();
 
-const API = "http://localhost:5000/api";
+const API = "/api";
 const user = ref(JSON.parse(localStorage.getItem("user") || "{}"));
 const myBatches = ref([]);
 const myItems = ref([]);
