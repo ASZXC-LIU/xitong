@@ -1,8 +1,8 @@
-<template>
-  <view class="emp-container">
+﻿<template>
+  <view class="emp-page">
     <view class="emp-header">
       <button v-if="selectedBatchId" class="btn btn-sm" @click="backToBatches">返回</button>
-      <text class="emp-title">{{ selectedBatchId ? batchName : "我的工单" }}</text>
+      <text class="emp-title">{{ selectedBatchId ? batchName : '我的工单' }}</text>
       <view class="emp-user-info">
         <text class="emp-user">{{ user.display_name }}</text>
         <button class="btn btn-sm btn-danger" @click="logout">退出</button>
@@ -25,42 +25,59 @@
       </view>
     </view>
 
-    <!-- 货品列表 -->
-    <view v-if="selectedBatchId">
+    <!-- 货品列表（表格） -->
+    <view v-if="selectedBatchId" class="table-wrap">
+      <view class="table-toolbar">
+        <text class="table-info">{{ batchName }} - 共 {{ myItems.length }} 种货品</text>
+      </view>
       <view v-if="myItems.length === 0" class="empty-state">
         <text class="empty-icon">暂无货品</text>
       </view>
-      <view v-for="item in myItems" :key="item.item_id" class="item-card">
-        <view class="item-card-header">
-          <text class="item-name">{{ item.item_name }}</text>
-          <text class="item-unit">{{ item.item_unit }}</text>
-          <text :class="'tag ' + statusTag(item)">{{ itemStatusText(item) }}</text>
-        </view>
-        <view class="item-card-body">
-          <view class="info-row">
-            <text class="info-label">分货数量</text>
-            <text class="info-value">{{ item.allocated_quantity }} {{ item.item_unit }}</text>
+      <view v-else class="matrix-table-wrap">
+        <view class="emp-table" style="display:table;width:100%;border-collapse:collapse;font-size:13px;min-width:500px">
+          <!-- thead -->
+          <view style="display:table-header-group">
+            <view style="display:table-row">
+              <view style="display:table-cell;padding:8px 6px;border-bottom:2px solid #000;text-align:center;font-weight:700;font-size:12px;background:#d9e1f2;color:#333;white-space:nowrap">货品名称</view>
+              <view style="display:table-cell;padding:8px 6px;border-bottom:2px solid #000;text-align:center;font-weight:700;font-size:12px;background:#d9e1f2;color:#333;white-space:nowrap">单位</view>
+              <view style="display:table-cell;padding:8px 6px;border-bottom:2px solid #000;text-align:center;font-weight:700;font-size:12px;background:#d9e1f2;color:#333;white-space:nowrap">分货数量</view>
+              <view style="display:table-cell;padding:8px 6px;border-bottom:2px solid #000;text-align:center;font-weight:700;font-size:12px;background:#d9e1f2;color:#333;white-space:nowrap">报货数量</view>
+              <view style="display:table-cell;padding:8px 6px;border-bottom:2px solid #000;text-align:center;font-weight:700;font-size:12px;background:#d9e1f2;color:#333;white-space:nowrap">状态</view>
+              <view style="display:table-cell;padding:8px 6px;border-bottom:2px solid #000;text-align:center;font-weight:700;font-size:12px;background:#d9e1f2;color:#333;white-space:nowrap">操作</view>
+            </view>
           </view>
-          <view class="info-row">
-            <text class="info-label">报货数量</text>
-            <input type="number" :value="item.editQty"
-                   step="any" min="0" class="qty-input"
-                   @blur="onQtyBlur(item, $event)"
-                   @confirm="onQtyConfirm(item, $event)"
-                   :placeholder="'输入报货数量 (' + item.item_unit + ')'" />
-          </view>
-          <view v-if="item.remark" class="info-row">
-            <text class="info-label">备注</text>
-            <text class="info-value" style="color:#909399">{{ item.remark }}</text>
+          <!-- tbody -->
+          <view style="display:table-row-group">
+            <view v-for="item in myItems" :key="item.item_id" style="display:table-row">
+              <view style="display:table-cell;padding:6px 4px;border-bottom:1px solid #e0e0e0;text-align:left;font-weight:500;padding-left:10px;white-space:nowrap">
+                <text>{{ item.item_name }}</text>
+              </view>
+              <view style="display:table-cell;padding:6px 4px;border-bottom:1px solid #e0e0e0;text-align:center;color:#909399;font-size:12px">
+                <text>{{ item.item_unit }}</text>
+              </view>
+              <view style="display:table-cell;padding:6px 4px;border-bottom:1px solid #e0e0e0;text-align:center;color:#e6a23c;font-weight:500">
+                <text>{{ item.allocated_quantity }}</text>
+              </view>
+              <view style="display:table-cell;padding:6px 4px;border-bottom:1px solid #e0e0e0;text-align:center;min-width:100px">
+                <input type="number" :value="item.editQty" step="any" min="0" class="qty-input" @blur="onQtyBlur(item, $event)" @confirm="onQtyConfirm(item, $event)" :placeholder="item.item_unit" style="width:80px;padding:6px 8px;border:1px solid #dcdfe6;border-radius:4px;font-size:13px;text-align:center" />
+              </view>
+              <view style="display:table-cell;padding:6px 4px;border-bottom:1px solid #e0e0e0;text-align:center">
+                <text :class="'tag ' + statusTag(item)" style="display:inline-block;padding:2px 8px;border-radius:10px;font-size:11px">{{ itemStatusText(item) }}</text>
+              </view>
+              <view style="display:table-cell;padding:6px 4px;border-bottom:1px solid #e0e0e0;text-align:center;white-space:nowrap">
+                <button class="btn btn-sm btn-primary" @click="submitItem(item)" :disabled="item.saving" style="padding:4px 10px;font-size:12px">
+                  <text>{{ item.saving ? '...' : '保存' }}</text>
+                </button>
+                <text v-if="item.saved" style="color:#67c23a;font-weight:bold;margin-left:4px">✓</text>
+                <text v-if="item.error" style="color:#f56c6c;font-weight:bold;margin-left:4px">!</text>
+              </view>
+            </view>
           </view>
         </view>
-        <view class="item-card-footer">
-          <button class="btn btn-primary btn-sm" @click="submitItem(item)" :disabled="item.saving">
-            {{ item.saving ? "保存中..." : "保存" }}
-          </button>
-          <text v-if="item.saved" class="save-success">已保存</text>
-          <text v-if="item.error" class="save-error">{{ item.error }}</text>
-        </view>
+      </view>
+      <!-- 保存提示 -->
+      <view v-if="saveMsg" :class="'save-toast ' + (saveOk ? 'toast-ok' : 'toast-err')" style="position:fixed;bottom:20px;left:50%;transform:translateX(-50%);padding:10px 20px;border-radius:6px;font-size:14px;z-index:1000;box-shadow:0 4px 12px rgba(0,0,0,0.15)">
+        <text>{{ saveMsg }}</text>
       </view>
     </view>
   </view>
@@ -77,7 +94,9 @@ export default {
       myBatches: [],
       myItems: [],
       selectedBatchId: null,
-      batchName: ""
+      batchName: "",
+      saveMsg: "",
+      saveOk: false
     }
   },
   onShow() {
@@ -112,12 +131,15 @@ export default {
     },
     async selectBatchById(batchId) {
       try {
-        const data = await apiGet('/employee/my-items?user_id=' + this.user.id + '&batch_id=' + batchId)
-        this.myItems = data.map(item => ({
-          ...item,
-          editQty: item.actual_quantity ?? item.allocated_quantity,
-          saving: false, saved: false, error: ""
-        }))
+        var data = await apiGet('/employee/my-items?user_id=' + this.user.id + '&batch_id=' + batchId)
+        var self = this
+        this.myItems = data.map(function(item) {
+          return {
+            ...item,
+            editQty: item.actual_quantity ?? item.allocated_quantity,
+            saving: false, saved: false, error: ""
+          }
+        })
       } catch (e) {
         console.error('selectBatchById', e)
       }
@@ -147,19 +169,25 @@ export default {
       item.saved = false
       item.error = ""
       try {
-        const payload = {
+        var payload = {
           assignment_id: item.assignment_id,
           batch_item_id: item.item_id,
           user_id: this.user.id,
-          actual_quantity: Number(item.editQty) || 0,
+          actual_quantity: Number(item.editQty) || 0
         }
-        const data = await apiPost('/employee/submit', payload)
+        var data = await apiPost('/employee/submit', payload)
         item.assignment_id = data.assignment_id || item.assignment_id
         item.saved = true
         item.actual_quantity = Number(item.editQty) || 0
-        item._timeout = setTimeout(() => { item.saved = false }, 2000)
+        this.saveMsg = '已保存'
+        this.saveOk = true
+        var self = this
+        setTimeout(function() { self.saveMsg = '' }, 2000)
+        item._timeout = setTimeout(function() { item.saved = false }, 2000)
       } catch (e) {
         item.error = e.message || '网络错误'
+        this.saveMsg = item.error
+        this.saveOk = false
       } finally {
         item.saving = false
       }
@@ -173,35 +201,50 @@ export default {
 </script>
 
 <style>
-.emp-container { max-width: 600px; margin: 0 auto; padding: 12px; font-size: 14px; }
-.emp-header { display: flex; align-items: center; gap: 8px; margin-bottom: 16px; padding-bottom: 12px; border-bottom: 1px solid #eee; }
+page { background: #f5f6fa; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; color: #333; }
+view, text, input, button { box-sizing: border-box; }
+
+.emp-page { max-width: 800px; margin: 0 auto; padding: 12px; font-size: 14px; }
+.emp-header { display: flex; align-items: center; gap: 8px; margin-bottom: 16px; padding-bottom: 12px; border-bottom: 1px solid #eee; flex-wrap: wrap; }
 .emp-title { flex: 1; font-size: 18px; font-weight: 600; color: #303133; }
 .emp-user-info { display: flex; align-items: center; gap: 8px; }
 .emp-user { font-size: 13px; color: #606266; }
-.empty-state { text-align: center; padding: 40px 20px; color: #909399; }
+
+.empty-state { text-align: center; padding: 40px 20px; color: #909399; display: block; }
 .empty-icon { font-size: 18px; margin-bottom: 8px; display: block; }
+
 .batch-card { background: #fff; border-radius: 10px; padding: 14px 16px; margin-bottom: 10px; box-shadow: 0 2px 8px rgba(0,0,0,0.06); border: 1px solid #eee; }
+.batch-card:active { transform: scale(0.98); background: #f5f7fa; }
 .batch-card-name { font-size: 16px; font-weight: 600; color: #303133; margin-bottom: 6px; }
 .batch-card-meta { display: flex; gap: 16px; font-size: 13px; color: #606266; }
 .batch-card-date { font-size: 12px; color: #bbb; margin-top: 6px; display: block; }
-.item-card { background: #fff; border-radius: 10px; padding: 14px 16px; margin-bottom: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.06); border: 1px solid #eee; }
-.item-card-header { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; padding-bottom: 10px; border-bottom: 1px solid #f0f0f0; }
-.item-name { font-size: 16px; font-weight: 600; flex: 1; }
-.item-unit { font-size: 12px; color: #909399; }
-.item-card-body { margin-bottom: 12px; }
-.info-row { display: flex; align-items: center; padding: 6px 0; gap: 8px; }
-.info-label { font-size: 13px; color: #909399; min-width: 70px; }
-.info-value { font-size: 14px; font-weight: 500; color: #303133; }
-.qty-input { flex: 1; max-width: 180px; padding: 8px 10px; border: 1px solid #dcdfe6; border-radius: 6px; font-size: 14px; outline: none; }
-.item-card-footer { display: flex; align-items: center; gap: 10px; padding-top: 10px; border-top: 1px solid #f0f0f0; }
-.save-success { font-size: 13px; color: #67c23a; }
-.save-error { font-size: 13px; color: #f56c6c; }
+
+.table-wrap { background: #fff; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.06); overflow: hidden; }
+.table-toolbar { padding: 12px 14px; border-bottom: 1px solid #eee; background: #fafafa; }
+.table-info { font-size: 13px; color: #606266; }
+.matrix-table-wrap { overflow-x: auto; }
+.emp-table { }
+.emp-table view[style*="display:table-row"]:nth-child(even) { background: #f8f9fc; }
+
+.qty-input { -moz-appearance: textfield; }
+.qty-input::-webkit-inner-spin-button,
+.qty-input::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+
 .tag { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 11px; }
 .tag-success { background: #f0f9eb; color: #67c23a; }
 .tag-warning { background: #fdf6ec; color: #e6a23c; }
 .tag-default { background: #f0f2f5; color: #909399; }
-.btn { display: inline-block; padding: 6px 14px; border: 1px solid #dcdfe6; border-radius: 4px; background: #fff; cursor: pointer; font-size: 13px; }
+
+.save-toast { border: 1px solid; }
+.toast-ok { background: #f0f9eb; color: #67c23a; border-color: #c2e7b0; }
+.toast-err { background: #fef0f0; color: #f56c6c; border-color: #fbc4c4; }
+
+.btn { display: inline-block; padding: 6px 14px; border: 1px solid #dcdfe6; border-radius: 4px; background: #fff; font-size: 13px; text-align: center; overflow: visible; line-height: 1.5; margin: 0; }
+.btn:active { border-color: #409eff; color: #409eff; }
 .btn-primary { background: #409eff; border-color: #409eff; color: #fff; }
+.btn-primary:active { background: #66b1ff; border-color: #66b1ff; color: #fff; }
+.btn-primary[disabled] { background: #a0cfff; border-color: #a0cfff; }
 .btn-danger { background: #f56c6c; border-color: #f56c6c; color: #fff; }
-.btn-sm { padding: 4px 10px; font-size: 12px; }
+.btn-danger:active { background: #f78989; border-color: #f78989; color: #fff; }
+.btn-sm { padding: 4px 10px; font-size: 12px; line-height: 1.5; }
 </style>

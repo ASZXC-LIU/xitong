@@ -152,7 +152,7 @@ def user_login_dict(user):
 @app.route("/api/send-code", methods=["POST"])
 def send_verification_code():
     data = request.json
-    phone = data.get("phone", "").strip()
+    phone = str(data.get("phone", "")).strip()
     if not phone or len(phone) < 11:
         return jsonify({"error": "请输入正确的手机号"}), 400
     code = str(random.randint(100000, 999999))
@@ -163,8 +163,8 @@ def send_verification_code():
 @app.route("/api/login/verify-code", methods=["POST"])
 def login_by_verify_code():
     data = request.json
-    phone = data.get("phone", "").strip()
-    code = data.get("code", "").strip()
+    phone = str(data.get("phone", "")).strip()
+    code = str(data.get("code", "")).strip()
     if not phone or not code:
         return jsonify({"error": "请输入手机号和验证码"}), 400
     stored = verification_codes.get(phone)
@@ -214,8 +214,8 @@ def login_by_wechat():
 def bind_wechat():
     data = request.json
     openid = data.get("wechat_openid", "")
-    phone = data.get("phone", "").strip()
-    code = data.get("code", "").strip()
+    phone = str(data.get("phone", "")).strip()
+    code = str(data.get("code", "")).strip()
     user = User.query.filter_by(phone=phone).first()
     if not user:
         return jsonify({"error": "手机号未注册，请联系管理员"}), 404

@@ -32,7 +32,7 @@
 import { ref } from 'vue';
 import { useRouter } from 'vue-router';
 const router = useRouter();
-const API = 'http://localhost:5000/api';
+const API = '/api';
 const tab = ref('account');
 const username = ref('');
 const password = ref('');
