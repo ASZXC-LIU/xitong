@@ -151,10 +151,13 @@ def user_login_dict(user):
 
 @app.route("/api/send-code", methods=["POST"])
 def send_verification_code():
-    data = request.json
+    # 强制尝试解析 JSON，即使没有标准 Header，如果解析失败返回空字典 {}
+    data = request.get_json(silent=True) or {}
+
     phone = str(data.get("phone", "")).strip()
     if not phone or len(phone) < 11:
         return jsonify({"error": "请输入正确的手机号"}), 400
+
     code = str(random.randint(100000, 999999))
     verification_codes[phone] = {"code": code, "expiry": time.time() + 300}
     print(f"[验证码] 手机: {phone} 验证码: {code}")
