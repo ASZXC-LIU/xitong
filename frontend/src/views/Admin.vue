@@ -1,6 +1,5 @@
 <template>
   <div class="admin-layout">
-    <!-- ========== 左侧菜单 ========== -->
     <aside class="sidebar" :class="{ open: sidebarOpen }" @click.self="sidebarOpen = false">
       <div class="sidebar-logo">
         <span>分单系统</span>
@@ -22,14 +21,12 @@
       </div>
     </aside>
 
-    <!-- ========== 右侧内容 ========== -->
     <main class="main-content" @click="sidebarOpen = false">
       <div class="mobile-header">
         <button class="hamburger" @click.stop="sidebarOpen = !sidebarOpen">{{ sidebarOpen ? "✕" : "☰" }}</button>
         <span class="mobile-title">{{ mobilePageTitle }}</span>
       </div>
 
-      <!-- 首页概览 -->
       <div v-if="currentPage === 'dashboard'">
         <h2 class="page-title">首页概览</h2>
         <div class="stats-row">
@@ -82,11 +79,9 @@
         </div>
       </div>
 
-      <!-- 分单管理 -->
       <div v-if="currentPage === 'batches'">
         <h2 class="page-title">分单管理</h2>
         <div class="batch-layout">
-          <!-- 批次选择下拉栏 -->
           <div class="batch-select-bar">
             <label style="font-weight:600;margin-right:8px;white-space:nowrap">选择批次:</label>
             <select v-model="selectedBatchId" @change="onBatchSelectChange" class="batch-select">
@@ -95,20 +90,22 @@
                 {{ b.name }} (到货: {{ b.arrival_time }} | {{ b.item_count }} 个货)
               </option>
             </select>
-            <button class="btn btn-sm btn-primary" @click="showBatchForm = true" style="margin-left:10px">+ 新建</button>
+            <button class="btn btn-sm btn-primary" @click="showBatchFormForCreate" style="margin-left:10px">+ 新建</button>
             <button class="btn btn-sm" @click="openReportForSelected" style="margin-left:6px"
               :disabled="!selectedBatchId">明细</button>
             <button class="btn btn-sm btn-danger" @click="deleteBatch(selectedBatchId)" style="margin-left:6px"
               :disabled="!selectedBatchId">删除</button>
           </div>
 
-          <!-- 右：货品表格 -->
           <div class="batch-right">
             <div v-if="!selectedBatchId" class="empty-hint">请选择一个批次</div>
             <template v-else>
               <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
                 <strong>货品列表</strong>
-                <!-- 添加货品已移除，所有货品类型自动显示 -->
+                <div>
+                  <button class="btn btn-sm" @click="insertRow" style="margin-right: 12px; border-color: #67c23a; color: #67c23a; font-weight: 600;">+ 插入行</button>
+                  <button class="btn btn-primary" @click="saveAllAssignments">一键提交所有分货</button>
+                </div>
               </div>
               <div v-if="items.length === 0" class="empty-hint">暂无货品</div>
               <div v-else class="matrix-table-wrap">
@@ -116,7 +113,6 @@
                   <thead>
                     <tr>
                       <th class="col-name">货品名称</th>
-                      <th class="col-unit">单位</th>
                       <th v-for="emp in matrixEmployees" :key="emp.id" class="col-emp" colspan="2">
                         <div class="emp-header-name">{{ emp.name }}</div>
                         <div class="emp-header-sub"><span class="sum-sub-alloc col-type-alloc">分货</span><span
@@ -131,33 +127,32 @@
                   </thead>
                   <tbody>
                     <tr v-for="item in items" :key="item.id">
-                      <td class="item-name-cell" @click="showItemDetail(item)"><strong>{{ item.name }}</strong></td>
-                      <td>{{ item.unit }}</td>
+                      <td class="item-name-cell">
+                        <input v-if="item.isTemp" type="text" v-model="item.name" placeholder="货品名称" class="name-input" />
+                        <strong v-else @click="showItemDetail(item)">{{ item.name }}</strong>
+                      </td>
                       <template v-for="emp in matrixEmployees" :key="emp.id">
-                        <td class="cell-qty-alloc col-type-alloc" @mouseenter="onCellEnter($event, item, emp)"
-                          @mouseleave="onCellLeave($event)">
-                          <input type="number" :value="getItemQty(item, emp.id)"
-                            @blur="saveEdit(item, emp.id, $event.target.value)" @keyup.enter="$event.target.blur()"
-                            step="any" min="0" class="cell-input" />
+                        <td class="cell-qty-alloc col-type-alloc">
+                          <input type="text" :value="getItemQty(item, emp.id)"
+                            @input="updateLocalData(item, emp.id, $event.target.value)"
+                            @focus="$event.target.select()"
+                            @keyup.enter="$event.target.blur()"
+                            class="cell-input" />
                         </td>
-                        <td class="cell-qty-actual col-type-actual" @mouseenter="onCellEnter($event, item, emp)"
-                          @mouseleave="onCellLeave($event)">
+                        <td class="cell-qty-actual col-type-actual">
                           <span class="actual-qty">{{ getItemActual(item, emp.id) }}</span>
                         </td>
                       </template>
-                      <td class="cell-total col-type-alloc" @mouseenter="onCellEnter($event, item, null)"
-                        @mouseleave="onCellLeave($event)">{{
-                        getItemTotal(item) }}</td>
-                      <td class="cell-total cell-total-actual col-type-actual"
-                        @mouseenter="onCellEnter($event, item, null)" @mouseleave="onCellLeave($event)">{{
-                        getItemActualTotal(item) }}</td>
+                      <td class="cell-total col-type-alloc">{{ getItemTotal(item) }}</td>
+                      <td class="cell-total cell-total-actual col-type-actual">{{ getItemActualTotal(item) }}</td>
                       <td><span
                           :class="'status-badge ' + (item.status === '未分配' ? 'status-pending' : item.status === '未报货' ? 'status-warn' : 'status-ok')">{{
                           item.status }}</span></td>
                       <td class="cell-remark">{{ item.remark || '无备注' }}</td>
                       <td>
                         <div class="action-group">
-                          <button class="btn btn-xs btn-danger" @click="deleteItem(item.id)" title="删除此货物">删除</button>
+                        <button class="btn btn-xs btn-primary" @click="startEdit(item)" style="margin-right: 4px;">修改</button>
+                          <button class="btn btn-xs btn-danger" @click="deleteItem(item)" title="删除此货物">删除</button>
                         </div>
                       </td>
                     </tr>
@@ -165,35 +160,23 @@
                   <tfoot v-if="items.length > 1">
                     <tr>
                       <td><strong>合计</strong></td>
-                      <td></td>
                       <template v-for="emp in matrixEmployees" :key="emp.id">
-                        <td class="cell-total col-type-alloc" @mouseenter="onCellEnter($event, null, emp)"
-                          @mouseleave="onCellLeave($event)">{{ getColumnTotal(emp.id) }}</td>
-                        <td class="cell-total cell-total-actual col-type-actual"
-                          @mouseenter="onCellEnter($event, null, emp)" @mouseleave="onCellLeave($event)">{{
-                          getMatrixColumnActualTotal(emp.id) }}</td>
+                        <td class="cell-total col-type-alloc">{{ getColumnTotal(emp.id) }}</td>
+                        <td class="cell-total cell-total-actual col-type-actual">{{ getMatrixColumnActualTotal(emp.id) }}</td>
                       </template>
-                      <td class="cell-total col-type-alloc" @mouseenter="onCellEnter($event, null, null)"
-                        @mouseleave="onCellLeave($event)">{{ getGrandTotal() }}</td>
-                      <td class="cell-total cell-total-actual col-type-actual"
-                        @mouseenter="onCellEnter($event, null, null)" @mouseleave="onCellLeave($event)">{{
-                        getMatrixGrandActualTotal() }}</td>
+                      <td class="cell-total col-type-alloc">{{ getGrandTotal() }}</td>
+                      <td class="cell-total cell-total-actual col-type-actual">{{ getMatrixGrandActualTotal() }}</td>
                       <td></td>
                       <td></td>
                     </tr>
                   </tfoot>
                 </table>
               </div>
-              <!-- Tooltip -->
-              <div class="matrix-tooltip" v-if="tooltip.visible" :style="{ left: tooltip.x + 'px', top: tooltip.y + 'px' }">{{
-                tooltip.text
-                }}</div>
             </template>
           </div>
         </div>
       </div>
 
-      <!-- 货品种类管理 -->
       <div v-if="currentPage === 'cargoTypes'">
         <h2 class="page-title">货品种类管理</h2>
         <div class="card">
@@ -228,7 +211,6 @@
         </div>
       </div>
 
-      <!-- 人员管理 -->
       <div v-if="currentPage==='employeeMgmt'">
         <h2 class="page-title">人员管理</h2>
         <div class="card">
@@ -278,7 +260,6 @@
         </div>
       </div>
 
-      <!-- 单位管理 -->
       <div v-if="currentPage === 'unitTypes'">
         <h2 class="page-title">单位管理</h2>
         <div class="card">
@@ -309,7 +290,6 @@
         </div>
       </div>
 
-      <!-- 全品类汇总-->
       <div v-if="currentPage === 'summary'">
         <h2 class="page-title">全品类汇总</h2>
         <div class="card no-print" style="display:flex;gap:8px;align-items:center;margin-bottom:16px;flex-wrap:wrap">
@@ -336,7 +316,6 @@
               <tr>
                 <th class="sum-col-idx">序号</th>
                 <th class="sum-col-name">货品名称</th>
-                <th class="sum-col-unit">单位</th>
                 <th v-for="emp in summaryEmployees" :key="emp.id" class="sum-col-emp" colspan="2">
                   <div class="sum-emp-name">{{ emp.name }}</div>
                   <div class="sum-emp-sub">
@@ -353,20 +332,18 @@
               <tr v-for="(d, idx) in summaryData.details" :key="d.item_name">
                 <td class="sum-idx">{{ idx + 1 }}</td>
                 <td class="sum-name">{{ d.item_name }}</td>
-                <td class="sum-unit">{{ d.item_unit }}</td>
                 <template v-for="emp in summaryEmployees" :key="emp.id">
                   <td class="sum-cell sum-cell-alloc">{{ getAlloc(d, emp.id) }}</td>
                   <td class="sum-cell sum-cell-actual">{{ getActual(d, emp.id) }}</td>
                 </template>
                 <td class="sum-total sum-total-alloc">{{ getAllocTotal(d) }}</td>
-                <td class="sum-total sum-total-actual">{{ d.total_actual ?? 0 }}</td>
+                <td class="sum-total sum-total-actual">{{ d.total_actual ?? '-' }}</td>
               </tr>
             </tbody>
             <tfoot>
               <tr>
                 <td></td>
                 <td style="text-align:center;font-weight:600;padding:8px 10px">合计</td>
-                <td></td>
                 <template v-for="emp in summaryEmployees" :key="emp.id">
                   <td class="sum-total sum-total-alloc">{{ getColumnAllocTotal(emp.id) }}</td>
                   <td class="sum-total sum-total-actual">{{ getColumnActualTotal(emp.id) }}</td>
@@ -379,8 +356,6 @@
         </div>
       </div>
 
-
-      <!-- 分单批次列表 -->
       <div v-if="currentPage === 'batchList'" class="batch-list-page">
         <h2 class="page-title">分单批次</h2>
         <div class="card">
@@ -421,56 +396,72 @@
       </div>
     </main>
 
-    <!-- 新建批次弹窗 -->
-    <div v-if="showBatchForm" class="modal-mask" @click.self="showBatchForm = false">
-      <div class="modal-card">
+    <div v-if="showBatchForm" class="modal-mask" @click.self="closeBatchForm">
+      <div class="modal-card" :style="{ width: parsedExcelData.length ? '80vw' : '480px', maxWidth: '1000px' }">
         <h3>{{ editingBatchId ? '编辑批次' : '新建报货批次' }}</h3>
-        <div class="form-group">
-          <label>报货日期</label>
-          <input type="date" v-model="batchForm.batch_date" />
+        
+        <div style="display:flex; gap:16px; flex-wrap:wrap;">
+          <div style="flex:1; min-width:200px;">
+            <div class="form-group">
+              <label>报货日期 <span style="color:red">*</span></label>
+              <input type="date" v-model="batchForm.batch_date" />
+            </div>
+            <div class="form-group">
+              <label>到货时间</label>
+              <input type="date" v-model="batchForm.arrival_time" />
+            </div>
+            <div class="form-group">
+              <label>批号备注</label>
+              <input v-model="batchForm.batch_remark" placeholder="备注信息（可选）" />
+            </div>
+            
+            <div v-if="!editingBatchId" class="form-group" style="margin-top:20px; padding-top:16px; border-top:1px dashed #ddd;">
+              <label style="color:#409eff; font-weight:bold;">批量导入分单 (可选)</label>
+              <p style="font-size:12px; color:#888; margin-bottom:8px;">请上传包含货品和人员分货数量的 Excel 文件 (.xlsx, .xls)</p>
+              <input type="file" accept=".xlsx, .xls" @change="handleFileUpload" style="padding: 4px;" />
+            </div>
+          </div>
+
+          <div v-if="parsedExcelData.length > 0 && !editingBatchId" style="flex: 2; border-left: 1px solid #eee; padding-left:16px; max-height: 400px; overflow-y:auto;">
+            <h4 style="margin-bottom: 8px; color: #67c23a;">数据预览 (共 {{ parsedExcelData.length }} 条)</h4>
+            <div v-if="unmatchedEmployees.length > 0" style="background:#fef0f0; color:#f56c6c; padding:8px; border-radius:4px; font-size:12px; margin-bottom:10px;">
+              <strong>注意：</strong> Excel中的列名 <b>{{ unmatchedEmployees.join(', ') }}</b> 未能在系统中匹配到对应员工，该列数据将被忽略。
+            </div>
+           <table class="data-table" style="font-size:12px;">
+              <thead>
+                <tr>
+                  <th>货品名称</th>
+                  <th v-for="emp in matchedEmployees" :key="emp.id">{{ emp.name }}</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="(item, i) in parsedExcelData" :key="i">
+                  <td style="font-weight:bold;">{{ item.name }}</td>
+                  <td v-for="emp in matchedEmployees" :key="emp.id">
+                    <span style="color:#e6a23c">分: {{ getPreviewQty(item, emp.id) }}</span> / 
+                    <span style="color:#67c23a">报: {{ getPreviewActualQty(item, emp.id) }}</span>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
         </div>
-        <div class="form-group">
-          <label>到货时间</label>
-          <input type="date" v-model="batchForm.arrival_time" />
+
+        <div v-if="isImporting" style="margin-top: 15px; text-align: center; color: #409eff; font-weight: bold;">
+          正在创建批次并导入数据... ({{ importProgress }} / {{ parsedExcelData.length }})
         </div>
-        <div class="form-group">
-          <label>批号备注</label>
-          <input v-model="batchForm.batch_remark" placeholder="备注信息（可选）" />
+
+        <div class="modal-actions" v-if="!isImporting">
+          <button class="btn" @click="closeBatchForm">取消</button>
+          <button class="btn btn-primary" @click="editingBatchId ? updateBatch() : createBatchWithImport()" :disabled="!batchForm.batch_date">
+            {{ editingBatchId ? '保存修改' : (parsedExcelData.length ? '一键建批次并导入' : '创建批次') }}
+          </button>
         </div>
-        <div class="modal-actions">
-          <button class="btn" @click="showBatchForm = false">取消</button>
-          <button class="btn btn-primary" @click="editingBatchId ? updateBatch() : createBatch()">{{ editingBatchId ?
-            '保存' :
-            '创建' }}</button>
-        </div>
-        <p v-if="batchMsg" :style="batchMsgOk ? 'color:#67c23a' : 'color:#f56c6c'">{{ batchMsg }}</p>
+        <p v-if="batchMsg" :style="batchMsgOk ? 'color:#67c23a; margin-top:10px;' : 'color:#f56c6c; margin-top:10px;'">{{ batchMsg }}</p>
       </div>
     </div>
 
 
-    <!-- 分货弹窗 -->
-    <!-- 分货弹窗 -->
-    <div v-if="showAssignmentModal" class="modal-mask" @click.self="showAssignmentModal = false">
-      <div class="modal-card">
-        <h3>分货货品: {{ assignItem.name }}</h3>
-        <div v-for="(a, idx) in assignmentForm" :key="idx" style="display:flex;gap:8px;margin-bottom:8px">
-          <select v-model="a.user_id" style="flex:1">
-            <option value="">-- 选择员工 --</option>
-            <option v-for="e in employees" :key="e.id" :value="e.id">{{ e.display_name }}</option>
-          </select>
-          <input v-model="a.allocated_quantity" type="number" step="0.1" placeholder="数量" style="width:100px" />
-          <button class="btn btn-sm btn-danger" @click="removeAssignmentRow(idx)" v-if="idx > 0"></button>
-        </div>
-        <button class="btn btn-sm" @click="addAssignmentRow" style="margin-bottom:12px">+ 添加分货</button>
-        <div class="modal-actions">
-          <button class="btn" @click="showAssignmentModal = false">取消</button>
-          <button class="btn btn-primary" @click="saveAssignment">保存</button>
-        </div>
-        <p v-if="assignMsg" style="color:#67c23a">{{ assignMsg }}</p>
-      </div>
-    </div>
-
-    <!-- 手机端货品详情弹窗 -->
     <div v-if="itemDetailView" class="modal-mask" @click.self="itemDetailView = null">
       <div class="modal-card modal-card-wide">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
@@ -478,7 +469,6 @@
           <button class="btn btn-sm" @click="itemDetailView = null">关闭</button>
         </div>
         <div style="margin-bottom:12px;font-size:13px;color:#909399;display:flex;gap:16px;flex-wrap:wrap">
-          <span>单位: {{ itemDetailView.unit }}</span>
           <span>规格: {{ itemDetailView.spec || '无' }}</span>
           <span>备注: {{ itemDetailView.remark || '无' }}</span>
           <span
@@ -496,10 +486,11 @@
             style="display:flex;align-items:center;padding:10px 0;border-bottom:1px solid #f0f0f0">
             <span style="flex:1;font-weight:500">{{ emp.display_name || emp.name }}</span>
             <span style="width:80px;text-align:center">
-             <input type="number" :value="getItemQty(itemDetailView, emp.id)"
-       @blur="saveEdit(itemDetailView, emp.id, $event.target.value)"
-       @keyup.enter="$event.target.blur()"
-       step="any" min="0" class="cell-input" />
+             <input type="text" :value="getItemQty(itemDetailView, emp.id)"
+               @input="updateLocalData(itemDetailView, emp.id, $event.target.value)"
+               @focus="$event.target.select()"
+               @keyup.enter="$event.target.blur()"
+               class="cell-input" />
             </span>
             <span style="width:80px;text-align:center;color:#67c23a;font-weight:500">{{ getItemActual(itemDetailView,
               emp.id) }}</span>
@@ -514,12 +505,31 @@
           </div>
         </div>
       </div>
+  
     </div>
-
+  <div v-if="editingItem" class="modal-mask" @click.self="editingItem = null">
+  <div class="modal-card" style="width: 400px;">
+    <h3>修改货品信息</h3>
+    <div class="form-group">
+      <label>货品名称</label>
+      <input v-model="itemEditForm.name" />
+    </div>
+    <div class="form-group">
+      <label>备注</label>
+      <input v-model="itemEditForm.remark" />
+    </div>
+    <div class="modal-actions">
+      <button class="btn" @click="editingItem = null">取消</button>
+      <button class="btn btn-primary" @click="saveItemEdit">保存修改</button>
+    </div>
+  </div>
+</div>
   </div>
 </template>
 
 <script>
+import * as XLSX from 'xlsx';
+
 const API = "/api"
 
 async function apiGet(url) {
@@ -550,6 +560,7 @@ export default {
   data() {
     return {
       user: JSON.parse(localStorage.getItem("user") || "{}"),
+      mobilePageTitle: "分单系统",
       currentPage: "dashboard",
       batches: [],
       selectedBatchId: null,
@@ -566,8 +577,7 @@ export default {
       cargoMsg: "", empMsg: "", unitMsg: "",
       showBatchForm: false,
       editingBatchId: null,
-      tooltip: { visible: false, x: 0, y: 0, text: "" },
-      batchForm: { name: "", arrival_time: "", batch_remark: "", batch_date: "" },
+      batchForm: { name: "", arrival_time: "", batch_remark: "", batch_date: new Date().toISOString().slice(0, 10) },
       batchMsg: "", batchMsgOk: false,
       showItemForm: false,
       itemForm: { name: "", spec: "", unit: "", remark: "" },
@@ -581,6 +591,14 @@ export default {
       summaryBatchId: null,
       itemDetailView: null,
       mobileItemId: null,
+
+      parsedExcelData: [],
+      matchedEmployees: [],
+      unmatchedEmployees: [],
+      isImporting: false,
+      importProgress: 0,
+      editingItem: null, // 当前编辑的行对象
+  itemEditForm: { name: "", remark: "" } // 编辑表单
     }
   },
   computed: {
@@ -596,16 +614,6 @@ export default {
       return { totalBatches, totalItems, pendingItems, doneItems, latestBatchName: latestBatch ? latestBatch.name : '' }
     },
     matrixEmployees() {
-      const empMap = {}
-      for (const item of this.items) {
-        if (item.assignments) {
-          for (const a of item.assignments) {
-            if (a.user_id && a.user_name) {
-              empMap[a.user_id] = { id: a.user_id, name: a.user_name }
-            }
-          }
-        }
-      }
       const order = {}
       this.employees.forEach((e, i) => { order[e.id] = i })
       return this.employees.map(e => ({ id: e.id, name: e.display_name || e.name }))
@@ -630,6 +638,34 @@ export default {
     ])
   },
   methods: {
+  startEdit(item) {
+    this.editingItem = item;
+    this.itemEditForm = { name: item.name, remark: item.remark || "" };
+  },
+
+  async saveItemEdit() {
+    try {
+      const payload = {
+        name: this.itemEditForm.name,
+        remark: this.itemEditForm.remark,
+        spec: this.editingItem.spec, // 保持原规格
+        unit: this.editingItem.unit  // 保持原单位
+      };
+      
+      // 调用 API 更新数据
+      await apiPut(API + "/items/" + this.editingItem.id, payload);
+      
+      // 更新本地数据
+      this.editingItem.name = this.itemEditForm.name;
+      this.editingItem.remark = this.itemEditForm.remark;
+      
+      this.editingItem = null;
+      alert("修改成功");
+      await this.loadItems(this.selectedBatchId);
+    } catch (e) {
+      alert("修改失败: " + e.message);
+    }
+  },
     goToBatches() {
       this.currentPage = 'batches'
       if (this.selectedBatchId && this.batches.length) {
@@ -685,24 +721,22 @@ export default {
       this.selectedBatchId = b.id
       this.loadItems(b.id)
     },
-    onBatchSelectChange() {
-      const batch = this.batches.find(b => b.id === this.selectedBatchId)
-      if (batch) this.selectBatch(batch)
+    
+    closeBatchForm() {
+      if(this.isImporting) return; 
+      this.showBatchForm = false;
+      this.parsedExcelData = [];
+      this.matchedEmployees = [];
+      this.unmatchedEmployees = [];
     },
-    openReportForSelected() {
-      if (!this.selectedBatchId) return
-      const batch = this.batches.find(b => b.id === this.selectedBatchId)
-      if (batch) this.openReport(batch)
-    },
-    goToBatchManagement(b) {
-      this.currentPage = 'batches'
-      this.selectedBatchId = b.id
-      this.loadItems(b.id)
-    },
+
     showBatchFormForCreate() {
       this.editingBatchId = null
-      this.batchForm = { name: "", arrival_time: "", batch_remark: "", batch_date: "" }
+      this.batchForm = { name: "", arrival_time: "", batch_remark: "", batch_date: new Date().toISOString().slice(0, 10) }
       this.batchMsg = ""
+      this.parsedExcelData = [];
+      this.matchedEmployees = [];
+      this.unmatchedEmployees = [];
       this.showBatchForm = true
     },
     editBatch(b) {
@@ -712,15 +746,178 @@ export default {
         name: b.name || "",
         arrival_time: b.arrival_time || "",
         batch_remark: b.batch_remark || "",
-        batch_date: dateStr
+        batch_date: dateStr || new Date().toISOString().slice(0, 10)
       }
       this.batchMsg = ""
       this.showBatchForm = true
     },
+    getPreviewQty(item, empId) {
+      const assign = item.assignments.find(a => a.user_id === empId);
+      return assign ? assign.allocated_quantity : '-';
+    },
+    getPreviewActualQty(item, empId) {
+      const assign = item.assignments.find(a => a.user_id === empId);
+      return assign ? assign.actual_quantity : '-';
+    },
+    handleFileUpload(event) {
+      const file = event.target.files[0];
+      if (!file) return;
+
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const data = new Uint8Array(e.target.result);
+        const workbook = XLSX.read(data, { type: 'array' });
+        const firstSheetName = workbook.SheetNames[0];
+        const worksheet = workbook.Sheets[firstSheetName];
+        
+        const jsonArr = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
+        
+        if (jsonArr.length < 2) {
+          alert("Excel文件内容太少或格式不正确");
+          return;
+        }
+
+        const headers = jsonArr[0];
+        
+        let itemNameColIdx = -1;
+        for (let i = 0; i < headers.length; i++) {
+          if (headers[i] && String(headers[i]).trim() === '货品名称') {
+            itemNameColIdx = i;
+            break;
+          }
+        }
+        if (itemNameColIdx === -1) itemNameColIdx = 0;
+
+        this.matchedEmployees = [];
+        this.unmatchedEmployees = [];
+        const empColumnMap = {}; 
+
+        for (let colIdx = 0; colIdx < headers.length; colIdx++) {
+          if (colIdx === itemNameColIdx) continue; 
+          
+          let colName = headers[colIdx];
+          if (!colName) continue;
+          colName = String(colName).trim();
+          
+          const excludeColumns = ['序号', '规格', '单位', '备注', '总计', '合计', '预计到货数量', '总报货', '剩余数量', '总分货数', '货品名称'];
+          if (excludeColumns.includes(colName)) continue;
+
+          const matched = this.employees.find(e => {
+            const name = (e.display_name || e.name || "").trim();
+            return name && colName.includes(name);
+          });
+
+          if (matched) {
+            empColumnMap[colIdx] = matched.id;
+            this.matchedEmployees.push({ id: matched.id, name: matched.display_name || matched.name });
+          } else {
+            this.unmatchedEmployees.push(colName);
+          }
+        }
+
+        const parsedItems = [];
+        for (let rowIdx = 1; rowIdx < jsonArr.length; rowIdx++) {
+          const row = jsonArr[rowIdx];
+          
+          const itemName = row[itemNameColIdx]; 
+          
+          if (!itemName || String(itemName).trim() === "") continue;
+
+          const assignments = [];
+          for (let colIdx in empColumnMap) {
+            let qty = row[colIdx];
+            if (qty !== undefined && qty !== null && qty !== '' && String(qty).trim() !== '-') {
+              // 🔥 修改 1：同时将该数量赋值给分货(allocated_quantity) 和报货(actual_quantity)
+              assignments.push({
+                user_id: empColumnMap[colIdx],
+                allocated_quantity: Number(qty) || 0,
+                actual_quantity: Number(qty) || 0 
+              });
+            }
+          }
+          parsedItems.push({ name: String(itemName).trim(), assignments });
+        }
+        
+        this.parsedExcelData = parsedItems;
+      };
+      reader.readAsArrayBuffer(file);
+    },
+
+    getPreviewQty(item, empId) {
+      const assign = item.assignments.find(a => a.user_id === empId);
+      return assign ? assign.allocated_quantity : '-';
+    },
+
+    async createBatchWithImport() {
+      try {
+        this.batchMsg = "";
+        
+        const dateStr = this.batchForm.batch_date || new Date().toISOString().slice(0, 10);
+        const parts = dateStr.split("-");
+        const month = parseInt(parts[1]);
+        const day = parseInt(parts[2]);
+        this.batchForm.name = month + "月" + day + "日报货";
+        
+        if (this.parsedExcelData.length === 0) {
+          await apiPost(API + "/batches", this.batchForm);
+          this.batchMsg = "创建成功!";
+          this.batchMsgOk = true;
+          this.closeBatchForm();
+          await this.loadBatches();
+          return;
+        }
+
+        this.isImporting = true;
+        this.importProgress = 0;
+
+        const createdBatch = await apiPost(API + "/batches", this.batchForm);
+        let targetBatchId = createdBatch.id; 
+        if (!targetBatchId) {
+           await this.loadBatches();
+           targetBatchId = this.sortedBatches[0].id; 
+        }
+
+        for (let i = 0; i < this.parsedExcelData.length; i++) {
+          const rowData = this.parsedExcelData[i];
+          
+          const foundType = this.cargoTypes.find(c => c.name === rowData.name);
+          const itemUnit = foundType && foundType.default_unit ? foundType.default_unit : '个';
+          
+          const createdItem = await apiPost(API + "/batches/" + targetBatchId + "/items", { 
+             name: rowData.name, 
+             spec: "", 
+             unit: itemUnit, 
+             remark: "Excel批量导入" 
+          });
+
+          if (rowData.assignments.length > 0 && createdItem.id) {
+            await apiPut(API + "/items/" + createdItem.id + "/assignments", rowData.assignments);
+          }
+          
+          this.importProgress = i + 1;
+        }
+
+        this.batchMsg = "批次创建与数据导入全部成功!";
+        this.batchMsgOk = true;
+        
+        setTimeout(async () => {
+          this.isImporting = false;
+          this.closeBatchForm();
+          await this.loadBatches();
+          this.selectBatchById(targetBatchId);
+          this.currentPage = 'batches';
+        }, 800);
+
+      } catch (e) {
+        this.isImporting = false;
+        this.batchMsg = e.response?.data?.error || e.message || "创建/导入过程中发生错误";
+        this.batchMsgOk = false;
+      }
+    },
+
     async updateBatch() {
       try {
         this.batchMsg = ""
-        // Recalculate name from batch_date
         var nameVal = this.batchForm.name || ""
         if (this.batchForm.batch_date) {
           var parts = this.batchForm.batch_date.split("-")
@@ -738,155 +935,207 @@ export default {
         await apiPut(API + "/batches/" + this.editingBatchId, payload)
         this.batchMsg = "更新成功!"
         this.batchMsgOk = true
-        this.showBatchForm = false
-        this.editingBatchId = null
+        this.closeBatchForm()
         await this.loadBatches()
       } catch (e) {
         this.batchMsg = e.response?.data?.error || "更新失败"
         this.batchMsgOk = false
       }
     },
-    async createBatch() {
-      try {
-        this.batchMsg = ""
-        const dateStr = this.batchForm.batch_date || new Date().toISOString().slice(0, 10)
-        const parts = dateStr.split("-")
-        const month = parseInt(parts[1])
-        const day = parseInt(parts[2])
-        this.batchForm.name = month + "月" + day + "日报货"
-        // arrival_time kept from user input
-        const r = await apiPost(API + "/batches", this.batchForm)
-        this.batchMsg = "创建成功!"
-        this.batchMsgOk = true
-        this.showBatchForm = false
-        this.editingBatchId = null
-        this.batchForm = { name: "", arrival_time: "", batch_remark: "", batch_date: "" }
-        await this.loadBatches()
-      } catch (e) {
-        this.batchMsg = e.response?.data?.error || "创建失败"
-        this.batchMsgOk = false
-      }
+    
+    insertRow() {
+      this.items.push({
+        id: 'temp_' + Date.now() + Math.floor(Math.random() * 1000),
+        name: '',
+        status: '未分货',
+        remark: '手动插入',
+        assignments: [],
+        isTemp: true  
+      });
+      
+      setTimeout(() => {
+        const wrap = document.querySelector('.matrix-table-wrap');
+        if (wrap) wrap.scrollTop = wrap.scrollHeight;
+      }, 50);
     },
+
     async deleteBatch(id) {
       if (!confirm("确认删除此批次?")) return
       await apiDelete(API + "/batches/" + id)
       if (this.selectedBatchId === id) { this.selectedBatchId = null; this.items = [] }
       this.loadBatches()
     },
-    async addItem() {
-      if (!this.itemForm.name) return
-      await apiPost(API + "/batches/" + this.selectedBatchId + "/items", this.itemForm)
-      this.showItemForm = false
-      this.itemForm = { name: "", spec: "", unit: "", remark: "" }
-      await this.loadItems(this.selectedBatchId)
-      await this.loadBatches()
+    
+    async deleteItem(item) {
+      if (item.isTemp) {
+        this.items = this.items.filter(i => i.id !== item.id);
+        return;
+      }
+      if (!confirm("确认删除此货品?")) return;
+      await apiDelete(API + "/items/" + item.id);
+      await this.loadItems(this.selectedBatchId);
+      await this.loadBatches();
     },
-    async deleteItem(id) {
-      if (!confirm("确认删除此货")) return
-      await apiDelete(API + "/items/" + id)
-      await this.loadItems(this.selectedBatchId)
-      await this.loadBatches()
-    },
-   async saveEdit(item, userId, newValue) {
-      const newQty = Number(newValue) || 0;
-      
-      // 1. 立即在前端本地更新数值（乐观更新），不刷新整个表格，确保输入焦点不会丢失
+
+    updateLocalData(item, userId, newValue) {
+      let val = String(newValue).trim();
+      if (val === "") val = "-"; 
+
       if (!item.assignments) item.assignments = [];
       let existingAssign = item.assignments.find(a => a.user_id === userId);
       
-      // 如果输入的值跟原来一模一样，直接跳过，节省性能
-      if (existingAssign && existingAssign.allocated_quantity === newQty) return;
+      if (existingAssign && String(existingAssign.allocated_quantity) === val) return;
       
       if (existingAssign) {
-        existingAssign.allocated_quantity = newQty;
+        existingAssign.allocated_quantity = val;
       } else {
-        item.assignments.push({ user_id: userId, allocated_quantity: newQty, actual_quantity: null });
+        item.assignments.push({ user_id: userId, allocated_quantity: val, actual_quantity: "-" });
       }
 
-      // 自动修正货品状态显示：如果有分配数量了，状态从“未分货”变为“未报货”
-      if (item.status === "未分货" && newQty > 0) {
+      if (item.status === "未分货" && val !== "-" && Number(val) > 0) {
         item.status = "未报货";
       }
+    },
 
-      // 2. 构造后端需要的全量分配数组
-      let assignmentsPayload = item.assignments.map(a => ({
-        user_id: a.user_id,
-        allocated_quantity: a.allocated_quantity || 0
-      }));
-
-      // 3. 静默保存到后端
+    async saveAllAssignments() {
       try {
-        await apiPut(API + "/items/" + item.id + "/assignments", assignmentsPayload);
+        const tempItems = this.items.filter(i => i.isTemp);
+        for (let tItem of tempItems) {
+          if (!tItem.name || !tItem.name.trim()) {
+            alert("有新增货品的名称为空，请填写完整后再提交！");
+            return;
+          }
+          
+          const foundType = this.cargoTypes.find(c => c.name === tItem.name.trim());
+          const itemUnit = foundType && foundType.default_unit ? foundType.default_unit : '个';
+          
+          const createdItem = await apiPost(API + "/batches/" + this.selectedBatchId + "/items", {
+            name: tItem.name.trim(),
+            spec: "",
+            unit: itemUnit, 
+            remark: tItem.remark || ""
+          });
+          tItem.id = createdItem.id;
+          tItem.isTemp = false;
+        }
+
+        const promises = this.items.map(item => {
+          if (!item.assignments || item.assignments.length === 0) return Promise.resolve();
+          
+          let assignmentsPayload = item.assignments
+            .filter(a => a.allocated_quantity !== '-' && a.allocated_quantity !== null && a.allocated_quantity !== "")
+            .map(a => {
+              // 🔥 修改 2：一键保存时，确保实际报货数量 (actual_quantity) 也不丢失，一起发送给后端
+              let payload = {
+                user_id: a.user_id,
+                allocated_quantity: Number(a.allocated_quantity)
+              };
+              if (a.actual_quantity !== undefined && a.actual_quantity !== '-' && a.actual_quantity !== null && a.actual_quantity !== "") {
+                payload.actual_quantity = Number(a.actual_quantity);
+              }
+              return payload;
+            });
+            
+          return apiPut(API + "/items/" + item.id + "/assignments", assignmentsPayload);
+        });
         
-        // 【关键修改】：删掉了 await this.loadItems(...)
-        // 这样表格就不会在每次填数字后重新渲染和打断管理员输入了！
-        
+        await Promise.all(promises);
+        alert("所有分货数据提交成功！");
+        await this.loadItems(this.selectedBatchId); 
       } catch (e) {
-        console.error("saveEdit failed", e);
-        // 可选：如果网络断开，给个小提示
-        alert("保存失败，请检查网络");
+        console.error("saveAllAssignments failed", e);
+        alert("保存过程中出现错误：" + (e.response?.data?.error || e.message || "请检查网络"));
       }
     },
+
     getItemQty(item, userId) {
-      if (!item.assignments) return 0
-      const a = item.assignments.find(a => a.user_id === userId)
-      return a ? (a.allocated_quantity || 0) : 0
+      if (!item.assignments) return '-';
+      const a = item.assignments.find(a => a.user_id === userId);
+      if (a && a.allocated_quantity !== null && a.allocated_quantity !== undefined && a.allocated_quantity !== "") {
+        return a.allocated_quantity;
+      }
+      return '-';
     },
     getItemActual(item, userId) {
-      if (!item.assignments) return 0
-      const a = item.assignments.find(a => a.user_id === userId)
-      return a && a.actual_quantity != null ? a.actual_quantity : 0
+      if (!item.assignments) return '-';
+      const a = item.assignments.find(a => a.user_id === userId);
+      if (a && a.actual_quantity !== null && a.actual_quantity !== undefined && a.actual_quantity !== "") {
+        return a.actual_quantity;
+      }
+      return '-';
     },
+    
     getItemTotal(item) {
-      if (!item.assignments) return 0
-      return item.assignments.reduce((sum, a) => sum + (a.allocated_quantity || 0), 0)
+      if (!item.assignments) return '-';
+      let sum = 0, hasVal = false;
+      item.assignments.forEach(a => {
+        if (a.allocated_quantity !== '-' && a.allocated_quantity != null && a.allocated_quantity !== '') {
+          sum += Number(a.allocated_quantity); hasVal = true;
+        }
+      });
+      return hasVal ? sum : '-';
     },
     getItemActualTotal(item) {
-      if (!item.assignments) return 0
-      return item.assignments.reduce((sum, a) => sum + (a.actual_quantity || 0), 0)
+      if (!item.assignments) return '-';
+      let sum = 0, hasVal = false;
+      item.assignments.forEach(a => {
+        if (a.actual_quantity !== '-' && a.actual_quantity != null && a.actual_quantity !== '') {
+          sum += Number(a.actual_quantity); hasVal = true;
+        }
+      });
+      return hasVal ? sum : '-';
     },
     getColumnTotal(userId) {
-      let total = 0
+      let sum = 0, hasVal = false;
       for (const item of this.items) {
         if (item.assignments) {
-          const a = item.assignments.find(a => a.user_id === userId)
-          if (a) total += (a.allocated_quantity || 0)
+          const a = item.assignments.find(a => a.user_id === userId);
+          if (a && a.allocated_quantity !== '-' && a.allocated_quantity != null && a.allocated_quantity !== '') {
+            sum += Number(a.allocated_quantity); hasVal = true;
+          }
         }
       }
-      return total
+      return hasVal ? sum : '-';
     },
     getMatrixColumnActualTotal(userId) {
-      let total = 0
+      let sum = 0, hasVal = false;
       for (const item of this.items) {
         if (item.assignments) {
-          const a = item.assignments.find(a => a.user_id === userId)
-          if (a) total += (a.actual_quantity || 0)
+          const a = item.assignments.find(a => a.user_id === userId);
+          if (a && a.actual_quantity !== '-' && a.actual_quantity != null && a.actual_quantity !== '') {
+            sum += Number(a.actual_quantity); hasVal = true;
+          }
         }
       }
-      return total
+      return hasVal ? sum : '-';
     },
     getGrandTotal() {
-      let total = 0
+      let sum = 0, hasVal = false;
       for (const item of this.items) {
         if (item.assignments) {
           for (const a of item.assignments) {
-            total += (a.allocated_quantity || 0)
+            if (a.allocated_quantity !== '-' && a.allocated_quantity != null && a.allocated_quantity !== '') {
+              sum += Number(a.allocated_quantity); hasVal = true;
+            }
           }
         }
       }
-      return total
+      return hasVal ? sum : '-';
     },
     getMatrixGrandActualTotal() {
-      let total = 0
+      let sum = 0, hasVal = false;
       for (const item of this.items) {
         if (item.assignments) {
           for (const a of item.assignments) {
-            total += (a.actual_quantity || 0)
+            if (a.actual_quantity !== '-' && a.actual_quantity != null && a.actual_quantity !== '') {
+              sum += Number(a.actual_quantity); hasVal = true;
+            }
           }
         }
       }
-      return total
+      return hasVal ? sum : '-';
     },
+
     onCargoNameInput() {
       const found = this.cargoTypes.find(c => c.name === this.itemForm.name)
       this.itemForm.unit = found ? found.default_unit || '' : ''
@@ -905,9 +1154,18 @@ export default {
     removeAssignmentRow(idx) {
       this.assignmentForm.splice(idx, 1)
     },
+    
+    // 🔥 修改处 3：针对旧弹窗如果还用到的话，也补上对 actual_quantity 的保留
     async saveAssignment() {
-      const payload = this.assignmentForm.filter(a => a.user_id)
-        .map(a => ({ user_id: Number(a.user_id), allocated_quantity: Number(a.allocated_quantity) || 0 }))
+      const payload = this.assignmentForm
+        .filter(a => a.user_id && a.allocated_quantity !== '-' && a.allocated_quantity !== '')
+        .map(a => {
+           let pl = { user_id: Number(a.user_id), allocated_quantity: Number(a.allocated_quantity) || 0 };
+           if(a.actual_quantity !== undefined && a.actual_quantity !== '-' && a.actual_quantity !== null && a.actual_quantity !== "") {
+              pl.actual_quantity = Number(a.actual_quantity);
+           }
+           return pl;
+        });
       await apiPut(API + "/items/" + this.assignItem.id + "/assignments", payload)
       this.assignMsg = "保存成功!"
       await this.loadItems(this.selectedBatchId)
@@ -979,7 +1237,6 @@ export default {
       this.loadUnitTypes()
     },
     async addEmployee() {
-      // 增加手机号前端严格校验
       if (!this.empForm.display_name) {
         alert("请输入员工姓名");
         return;
@@ -994,7 +1251,6 @@ export default {
         this.empForm = { display_name: "", username: "", password: "" }
         this.empMsg = "添加成功！默认密码为123456"
         this.loadEmployees()
-        // 3秒后清除成功提示
         setTimeout(() => { this.empMsg = "" }, 3000);
       } catch (e) {
         alert(e.message || "添加失败，该手机号可能已存在");
@@ -1005,20 +1261,17 @@ export default {
       await apiDelete(API + "/employees/" + id)
       this.loadEmployees()
     },
-    // === 新增的编辑人员方法 ===
     editEmployee(e) {
-      // 点击编辑时，将当前人员的信息赋给弹窗表单
       this.empEditForm = {
         id: e.id,
         display_name: e.display_name,
         username: e.username,
-        password: "" // 密码默认留空，防止显示乱码
+        password: "" 
       };
       this.empEditMsg = "";
       this.showEmpEditModal = true;
     },
     async saveEmployeeEdit() {
-      // 校验前端格式
       if (!this.empEditForm.display_name) {
         this.empEditMsg = "姓名不能为空";
         return;
@@ -1033,7 +1286,6 @@ export default {
           display_name: this.empEditForm.display_name,
           username: this.empEditForm.username,
         };
-        // 如果输入了密码才提交密码参数
         if (this.empEditForm.password) {
           payload.password = this.empEditForm.password;
         }
@@ -1041,65 +1293,87 @@ export default {
         await apiPut(API + "/employees/" + this.empEditForm.id, payload);
         
         this.showEmpEditModal = false;
-        this.loadEmployees(); // 重新加载列表
+        this.loadEmployees(); 
         
-        // 给个操作成功的绿色提示语
         this.empMsg = "信息修改成功！";
         setTimeout(() => { this.empMsg = ""; }, 3000);
       } catch (e) {
         this.empEditMsg = e.message || "修改失败，手机号可能被占用";
       }
     },
-    // ===========================
+    
     getAlloc(d, userId) {
-      if (!d.assignments) return 0
-      const a = d.assignments.find(a => a.user_id === userId)
-      return a ? (a.allocated_quantity ?? 0) : 0
+      if (!d.assignments) return '-';
+      const a = d.assignments.find(a => a.user_id === userId);
+      return (a && a.allocated_quantity !== null && a.allocated_quantity !== undefined && a.allocated_quantity !== '') ? a.allocated_quantity : '-';
     },
     getActual(d, userId) {
-      if (!d.assignments) return '-'
-      const a = d.assignments.find(a => a.user_id === userId)
-      return a && a.actual_quantity != null ? a.actual_quantity : '-'
+      if (!d.assignments) return '-';
+      const a = d.assignments.find(a => a.user_id === userId);
+      return (a && a.actual_quantity !== null && a.actual_quantity !== undefined && a.actual_quantity !== '') ? a.actual_quantity : '-';
     },
     getAllocTotal(d) {
-      if (!d.assignments) return 0
-      return d.assignments.reduce((s, a) => s + (a.allocated_quantity ?? 0), 0)
+      if (!d.assignments) return '-';
+      let sum = 0, hasVal = false;
+      d.assignments.forEach(a => {
+        let v = a.allocated_quantity;
+        if (v !== '-' && v != null && v !== '') {
+          sum += Number(v); hasVal = true;
+        }
+      });
+      return hasVal ? sum : '-';
     },
     getColumnAllocTotal(userId) {
-      if (!this.summaryData || !this.summaryData.details) return 0
-      let total = 0
+      if (!this.summaryData || !this.summaryData.details) return '-';
+      let sum = 0, hasVal = false;
       for (const d of this.summaryData.details) {
-        total += Number(this.getAlloc(d, userId))
+        let v = this.getAlloc(d, userId);
+        if (v !== '-' && v != null && v !== '') {
+          sum += Number(v); hasVal = true;
+        }
       }
-      return total
+      return hasVal ? sum : '-';
     },
     getColumnActualTotal(userId) {
-      if (!this.summaryData || !this.summaryData.details) return 0
-      let total = 0
+      if (!this.summaryData || !this.summaryData.details) return '-';
+      let sum = 0, hasVal = false;
       for (const d of this.summaryData.details) {
-        const v = this.getActual(d, userId)
-        total += (v === '-' ? 0 : Number(v))
+        let v = this.getActual(d, userId);
+        if (v !== '-' && v != null && v !== '') {
+          sum += Number(v); hasVal = true;
+        }
       }
-      return total
+      return hasVal ? sum : '-';
     },
     getGrandAllocTotal() {
-      if (!this.summaryData || !this.summaryData.details) return 0
-      let total = 0
+      if (!this.summaryData || !this.summaryData.details) return '-';
+      let sum = 0, hasVal = false;
       for (const d of this.summaryData.details) {
-        total += this.getAllocTotal(d)
+        let v = this.getAllocTotal(d);
+        if (v !== '-' && v != null && v !== '') {
+          sum += Number(v); hasVal = true;
+        }
       }
-      return total
+      return hasVal ? sum : '-';
     },
     getGrandActualTotal() {
-      if (!this.summaryData || !this.summaryData.details) return 0
-      return this.summaryData.details.reduce((s, d) => s + (d.total_actual ?? 0), 0)
+      if (!this.summaryData || !this.summaryData.details) return '-';
+      let sum = 0, hasVal = false;
+      for (const d of this.summaryData.details) {
+        let v = d.total_actual;
+        if (v !== '-' && v != null && v !== '') {
+          sum += Number(v); hasVal = true;
+        }
+      }
+      return hasVal ? sum : '-';
     },
+
     downloadExcel() {
       if (!this.summaryData) return
       const table = document.getElementById("summary-table")
       if (!table) return
       let html = '<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">'
-      html += '<head><meta charset="UTF-8"><!--[if gte mso 9]><xml><x:ExcelWorkbook><x:ExcelWorksheets><x:ExcelWorksheet><x:Name>全品类汇总</x:Name><x:WorksheetOptions><x:DisplayGridlines/></x:WorksheetOptions></x:ExcelWorksheet></x:ExcelWorksheets></x:ExcelWorkbook></xml><![endif]-->'
+      html += '<head><meta charset="UTF-8">'
       html += '<style>th,td{border:1px solid #000;padding:4px 6px;font-size:12px;text-align:center}th{background:#d9e1f2;font-weight:700}td{vertical-align:middle}</style></head><body>'
       html += '<h2 style="text-align:center;font-size:16px;margin-bottom:8px">' + (this.summaryData.batch_name || "全品类汇总") + '</h2>'
       html += '<p style="text-align:center;font-size:12px;color:#666;margin-bottom:12px">到货时间: ' + (this.summaryData.arrival_time || "") + '</p>'
@@ -1124,91 +1398,6 @@ export default {
     },
     backToBatchItems() {
       this.itemDetailView = null
-    },
-    // ===== HOVER & TOOLTIP =====
-    onCellEnter(event, item, emp) {
-      const td = event.currentTarget
-      const tr = td.closest('tr')
-      const tbody = tr.closest('tbody') || tr.closest('tfoot') || tr.closest('thead')
-      if (!tbody) return
-      const rows = Array.from(tbody.querySelectorAll('tr'))
-      const rowIdx = rows.indexOf(tr)
-      const cells = Array.from(tr.children)
-      const colIdx = cells.indexOf(td)
-      // Remove previous highlights
-      document.querySelectorAll('.matrix-table .hover-row').forEach(function (el) {
-        el.classList.remove('hover-row')
-      })
-      document.querySelectorAll('.matrix-table .hover-col').forEach(function (el) {
-        el.classList.remove('hover-col')
-      })
-      // Highlight current row
-      tr.classList.add('hover-row')
-      // Highlight current column across all rows in this table body
-      var table = tr.closest('table')
-      if (table) {
-        var allRows = table.querySelectorAll('tr')
-        for (var r = 0; r < allRows.length; r++) {
-          var rowCells = allRows[r].children
-          if (rowCells[colIdx]) {
-            rowCells[colIdx].classList.add('hover-col')
-          }
-        }
-      }
-      // Tooltip logic - show only what this cell contains
-      var isAlloc = td.classList.contains('col-type-alloc')
-      var isActual = td.classList.contains('col-type-actual')
-      var isTotal = td.classList.contains('cell-total') || td.tagName === 'TH'
-      var isTfoot = tr.closest('tfoot') !== null
-      var itemName = item && item.name ? item.name : ''
-      var itemUnit = item && item.unit ? item.unit : ''
-      var empName = emp && emp.name ? emp.name : ''
-      // Get cell value - input or text
-      var cellValue = td.textContent || ''
-      var inp = td.querySelector('input')
-      if (inp) cellValue = inp.value
-      cellValue = cellValue.trim() || '0'
-      var text = ''
-      if (td.classList.contains('item-name-cell')) {
-        text = itemName
-      } else if (td.classList.contains('col-unit')) {
-        text = itemName + ' 单位： ' + itemUnit
-      } else if (isTfoot) {
-        if (isAlloc && empName) {
-          text = empName + '总分货：' + cellValue
-        } else if (isActual && empName) {
-          text = empName + '总报货：' + cellValue
-        } else if (isAlloc) {
-          text = '总分货：' + cellValue
-        } else if (isActual) {
-          text = '总报货：' + cellValue
-        }
-      } else if (isAlloc && isTotal && itemName) {
-        text = itemName + '总分货：' + cellValue
-      } else if (isActual && isTotal && itemName) {
-        text = itemName + '总报货：' + cellValue
-      } else if (isAlloc && itemName && empName) {
-        text = itemName + ' ' + empName + ' 分货：' + cellValue
-      } else if (isActual && itemName && empName) {
-        text = itemName + ' ' + empName + ' 报货：' + cellValue
-      } else if (td.classList.contains('cell-remark')) {
-        text = '备注：' + cellValue
-      }
-      if (text) {
-        this.tooltip.text = text
-        this.tooltip.x = event.clientX + 12
-        this.tooltip.y = event.clientY - 10
-        this.tooltip.visible = true
-      }
-    },
-    onCellLeave(event) {
-      document.querySelectorAll('.matrix-table .hover-row').forEach(function (el) {
-        el.classList.remove('hover-row')
-      })
-      document.querySelectorAll('.matrix-table .hover-col').forEach(function (el) {
-        el.classList.remove('hover-col')
-      })
-      this.tooltip.visible = false
     }
   }
 }
@@ -1219,6 +1408,56 @@ export default {
   box-sizing: border-box;
   margin: 0;
   padding: 0;
+}
+
+/* 临时插入行的输入框样式 */
+.name-input {
+  width: 100%;
+  min-width: 60px;
+  padding: 4px;
+  border: 1px dashed #409eff;
+  border-radius: 4px;
+  text-align: center;
+  font-size: 13px;
+  outline: none;
+  font-weight: bold;
+}
+.name-input:focus {
+  border-style: solid;
+  background-color: #ecf5ff;
+}
+
+.item-name-cell strong {
+  display: block;
+  width: 100%;
+  padding: 4px;
+  text-align: left;
+  font-weight: bold;
+  white-space: normal; /* 允许换行 */
+  word-break: break-all; /* 防止长名称撑破单元格 */
+}
+.sum-name {
+  text-align: center !important;
+  padding-left: 5px !important;
+  padding-right: 5px !important;
+  max-width: 7em;
+  white-space: normal;
+  word-wrap: break-word;
+  word-break: break-all;
+  margin: 0 auto;
+}
+
+.sum-col-name {
+  text-align: center !important;
+  padding-left: 5px !important;
+  padding-right: 5px !important;
+}
+
+.matrix-table th.col-name,
+.matrix-table td.item-name-cell {
+  text-align: center !important;
+  padding-left: 5px !important;
+  padding-right: 5px !important;
 }
 
 body {
@@ -1533,11 +1772,11 @@ body {
   background: #fff;
   border-radius: 10px;
   padding: 24px;
-  width: 480px;
   max-width: 90vw;
-  max-height: 80vh;
+  max-height: 85vh;
   overflow-y: auto;
   box-shadow: 0 8px 30px rgba(0, 0, 0, 0.15);
+  transition: width 0.3s ease;
 }
 
 .modal-card h3 {
@@ -1607,7 +1846,6 @@ body {
   background: transparent;
 }
 
-/* ===== 矩阵表格样式 ===== */
 .batch-select-bar {
   display: flex;
   align-items: center;
@@ -1633,69 +1871,6 @@ body {
   border-color: #409eff;
 }
 
-/* 矩阵表格 - 首列固定 */
-
-/* Column type background colors - matrix table */
-.matrix-table .col-type-alloc {
-  background-color: #fff8e1 !important;
-  /* light yellow for ?货 */
-}
-
-.matrix-table .col-type-actual {
-  background-color: #e8f5e9 !important;
-  /* light green for 报货 */
-}
-
-.matrix-table th.col-type-alloc {
-  background-color: #fff3cd !important;
-}
-
-.matrix-table th.col-type-actual {
-  background-color: #c8e6c9 !important;
-}
-
-/* Hover highlight for row and column */
-.matrix-table tbody tr.hover-row td {
-  background-color: #e3e8f0 !important;
-}
-
-.matrix-table tbody tr.hover-row td.col-type-alloc {
-  background-color: #ffe8b0 !important;
-}
-
-.matrix-table tbody tr.hover-row td.col-type-actual {
-  background-color: #c8e6c9 !important;
-}
-
-.matrix-table td.hover-col {
-  background-color: #d0d8e8 !important;
-}
-
-.matrix-table td.col-type-alloc.hover-col {
-  background-color: #ffd699 !important;
-}
-
-.matrix-table td.col-type-actual.hover-col {
-  background-color: #a5d6a7 !important;
-}
-
-/* Tooltip */
-.matrix-tooltip {
-  position: fixed;
-  z-index: 10000;
-  background: #333;
-  color: #fff;
-  padding: 6px 10px;
-  border-radius: 4px;
-  font-size: 12px;
-  pointer-events: none;
-  white-space: nowrap;
-  max-width: 280px;
-  line-height: 1.5;
-}
-
-
-/* Column type background colors */
 .matrix-table .col-type-alloc {
   background-color: #fff8e1 !important;
 }
@@ -1712,114 +1887,6 @@ body {
   background-color: #c8e6c9 !important;
 }
 
-/* Hover highlight */
-.matrix-table tbody tr.hover-row td,
-.matrix-table tfoot tr.hover-row td {
-  background-color: #dde4f0 !important;
-}
-
-.matrix-table tbody tr.hover-row td.col-type-alloc,
-.matrix-table tfoot tr.hover-row td.col-type-alloc {
-  background-color: #ffe8b0 !important;
-}
-
-.matrix-table tbody tr.hover-row td.col-type-actual,
-.matrix-table tfoot tr.hover-row td.col-type-actual {
-  background-color: #c8e6c9 !important;
-}
-
-.matrix-table td.hover-col {
-  background-color: #d0d8e8 !important;
-}
-
-.matrix-table td.col-type-alloc.hover-col {
-  background-color: #ffd699 !important;
-}
-
-.matrix-table td.col-type-actual.hover-col {
-  background-color: #a5d6a7 !important;
-}
-
-.matrix-table th.hover-col {
-  background-color: #c0c8e0 !important;
-}
-
-
-/* Cell hover tooltip */
-.matrix-tooltip {
-  position: fixed;
-  z-index: 10000;
-  background: rgba(51, 51, 51, 0.92);
-  color: #fff;
-  padding: 8px 12px;
-  border-radius: 6px;
-  font-size: 12px;
-  pointer-events: none;
-  white-space: nowrap;
-  max-width: 320px;
-  line-height: 1.6;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
-}
-
-.matrix-table-wrap {
-  overflow-x: auto;
-  margin-top: 4px;
-  position: relative;
-}
-
-.matrix-table {
-  border-collapse: separate;
-  border-spacing: 0;
-}
-
-.matrix-table th.col-name,
-.matrix-table td:first-child {
-  position: sticky;
-  left: 0;
-  z-index: 2;
-  background: #fff;
-  border-right: 2px solid #e8e8e8;
-}
-
-.matrix-table thead th.col-name {
-  z-index: 3;
-  background: #f5f7fa;
-}
-
-.matrix-table tfoot td:first-child {
-  background: #fafbfc;
-}
-
-.matrix-table tbody tr:hover td:first-child {
-  background: #f0f7ff;
-}
-
-.batch-select-bar {
-  display: flex;
-  align-items: center;
-  padding: 12px 16px;
-  background: #fff;
-  border-radius: 8px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
-  margin-bottom: 16px;
-}
-
-.batch-select {
-  flex: 1;
-  max-width: 500px;
-  padding: 8px 12px;
-  border: 1px solid #dcdfe6;
-  border-radius: 4px;
-  font-size: 14px;
-  outline: none;
-  background: #fff;
-}
-
-.batch-select:focus {
-  border-color: #409eff;
-}
-
-/* 矩阵表格 - 首列固定 */
 .matrix-table-wrap {
   overflow-x: auto;
   margin-top: 4px;
@@ -1864,7 +1931,7 @@ body {
 .matrix-table td {
   padding: 3px 3px;
   text-align: center;
-  white-space: nowrap;
+ 
   border: 1px solid #000;
 }
 
@@ -1896,10 +1963,7 @@ body {
 .matrix-table .col-name {
   text-align: left;
   min-width: 65px;
-}
-
-.matrix-table .col-unit {
-  min-width: 32px;
+  width: 120px;
 }
 
 .matrix-table .col-emp {
@@ -2005,7 +2069,6 @@ body {
   border-color: #c0c4cc;
 }
 
-/* Hide spin buttons */
 .cell-input[type=number] {
   -moz-appearance: textfield;
 }
@@ -2047,7 +2110,6 @@ body {
   justify-content: center;
 }
 
-/* ===== 响应式布局 - 手机端===== */
 /* ===== 全品类汇总- 矩阵样式 ===== */
 .summary-table {
   width: 100%;
@@ -2089,10 +2151,6 @@ body {
   text-align: left;
   min-width: 60px;
   width: 60px;
-}
-
-.sum-col-unit {
-  width: 35px;
 }
 
 .sum-col-emp {
@@ -2145,11 +2203,6 @@ body {
   font-size: 12px;
 }
 
-.sum-unit {
-  font-size: 12px;
-  color: #606266;
-}
-
 .sum-cell {
   font-size: 13px;
   padding: 6px 4px !important;
@@ -2197,8 +2250,6 @@ body {
 }
 
 @media (max-width: 768px) {
-
-  /* 侧边栏*/
   .sidebar {
     position: fixed;
     z-index: 1000;
@@ -2272,7 +2323,6 @@ body {
     padding-left: 44px;
   }
 
-  /* 批次选择栏*/
   .batch-select-bar {
     flex-wrap: wrap;
     gap: 8px;
@@ -2285,7 +2335,6 @@ body {
     max-width: none;
   }
 
-  /* 矩阵表格 - 手机端端用卡片替代 */
   .matrix-table-wrap {
     overflow-x: auto;
   }
@@ -2317,7 +2366,6 @@ body {
     text-decoration: underline;
   }
 
-  /* 基础信息表单 */
   .card .form-inline,
   .card>div[style*="flex"] {
     flex-direction: column;
@@ -2329,7 +2377,6 @@ body {
     width: 100% !important;
   }
 
-  /* 统计卡片 */
   .stats-row {
     flex-wrap: wrap;
   }
@@ -2338,7 +2385,6 @@ body {
     min-width: calc(50% - 8px);
   }
 
-  /* 分单批次列表 - 卡片布局 */
   .batch-list-page .data-table,
   .batch-list-page .data-table thead,
   .batch-list-page .data-table tbody,
@@ -2410,9 +2456,8 @@ body {
     max-width: none;
   }
 
-  /* 弹窗 */
   .modal-card {
-    width: 95vw;
+    width: 95vw !important;
     padding: 16px;
   }
 
@@ -2421,7 +2466,6 @@ body {
     padding: 16px;
   }
 
-  /* 全品类汇总*/
   #print-zone .data-table {
     font-size: 12px;
   }
@@ -2431,13 +2475,11 @@ body {
     padding: 4px;
   }
 
-  /* 移动端分货列表*/
   .mobile-assign-list .cell-input {
     width: 60px;
   }
 }
 
-/* ===== 分单批次列表样式 ===== */
 .batch-list-page .data-table td {
   vertical-align: middle;
 }

@@ -437,6 +437,7 @@ def save_assignments(iid):
             batch_item_id=iid,
             user_id=a["user_id"],
             allocated_quantity=a.get("allocated_quantity", 0),
+            actual_quantity=a.get("actual_quantity")
         ))
     db.session.commit()
     update_item_status(iid)
