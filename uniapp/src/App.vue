@@ -11,6 +11,15 @@
 export default {
   onLaunch() {
     console.log("App Launch")
+    // #ifdef MP-WEIXIN
+    // 微信隐私接口会在需要时要求用户先阅读并同意隐私指引。
+    // 由登录页中带有该 id 的官方授权按钮承接此流程。
+    if (typeof wx !== "undefined" && typeof wx.onNeedPrivacyAuthorization === "function") {
+      wx.onNeedPrivacyAuthorization((resolve) => {
+        resolve({ buttonId: "privacy-authorize-button" })
+      })
+    }
+    // #endif
   }
 }
 </script>

@@ -3,7 +3,7 @@
     <div class='login-card'>
       <h2>分单系统</h2>
       <div class="login-form">
-        <input v-model='username' type="number" placeholder='请输入手机号' @keyup.enter='doLogin' />
+        <input v-model='username' autocomplete="username" placeholder='请输入管理员账号' @keyup.enter='doLogin' />
         <input v-model='password' type='password' placeholder='请输入密码' @keyup.enter='doLogin' />
       </div>
       
@@ -12,9 +12,7 @@
       </button>
       
       <p v-if='error' style='color:#f56c6c; margin-top:12px; text-align:center;'>{{ error }}</p>
-      <p style='margin-top:16px; font-size:12px; color:#999; text-align:center;'>
-        默认管理员账号: 13800000000 / 123456
-      </p>
+      <p style='margin-top:16px; font-size:13px; color:#667085; text-align:center;'>仅限管理员登录</p>
     </div>
   </div>
 </template>
@@ -32,7 +30,7 @@ const error = ref('');
 
 async function doLogin() {
   error.value = '';
-  if (!username.value) { error.value = '请输入手机号'; return; }
+  if (!username.value) { error.value = '请输入管理员账号'; return; }
   if (!password.value) { error.value = '请输入密码'; return; }
   
   loading.value = true;
@@ -45,13 +43,16 @@ async function doLogin() {
     const data = await res.json();
     
     if (!res.ok) { 
-      error.value = data.error; 
+      error.value = data.error || '登录失败';
       return; 
     }
-    
+    if (data.role !== 'admin') {
+      error.value = '此入口仅供管理员使用';
+      return;
+    }
     localStorage.setItem('user', JSON.stringify(data));
     if (data.token) localStorage.setItem('token', data.token);
-    router.push(data.role === 'admin' ? '/admin' : '/employee');
+    router.push('/admin');
   } catch { 
     error.value = '无法连接服务器，请确认后端已启动'; 
   } finally { 

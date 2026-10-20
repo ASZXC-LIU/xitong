@@ -1,269 +1,355 @@
-﻿<template>
-  <view class="login-wrap">
+<template>
+  <view class="login-page">
     <view class="login-card">
-      <text class="login-title">分单系统</text>
+      <view class="brand-mark">分</view>
+      <text class="login-title">员工报货</text>
+      <text class="login-description">使用管理员登记的手机号快捷登录</text>
 
-      <!-- 登录方式切换 -->
-      <view class="tab-bar">
-        <text :class="'tab-item ' + (tab==='account' ? 'active' : '')" @click="switchTab('account')">账号登录</text>
-        <text :class="'tab-item ' + (tab==='phone' ? 'active' : '')" @click="switchTab('phone')">短信登录</text>
+      <view v-if="checking" class="status-panel" aria-live="polite">
+        <view class="loading-dot"></view>
+        <text>正在检查登录状态…</text>
       </view>
 
-      <!-- 账号登录 -->
-      <view v-if="tab==='account'">
-        <input class="uni-input" v-model="username" placeholder="用户名" @confirm="doLogin" />
-        <input class="uni-input" v-model="password" type="password" placeholder="密码" @confirm="doLogin" />
-        <button class="btn btn-primary" style="width:100%;margin-top:8px" @click="doLogin" :disabled="loading">
-          {{ loading ? "登录中..." : "登 录" }}
-        </button>
-      </view>
-
-      <!-- 短信验证码登录 -->
-      <view v-if="tab==='phone'">
-        <view class="phone-row">
-          <input class="uni-input phone-input" v-model="phone" type="number" maxlength="11" placeholder="手机号" @confirm="sendCode" />
-          <button class="btn btn-code" @click="sendCode" :disabled="codeSending || codeCountdown > 0">
-            {{ codeCountdown > 0 ? codeCountdown + "s" : codeSending ? "发送中..." : "获取验证码" }}
+      <template v-else>
+        <!-- #ifdef MP-WEIXIN -->
+        <!-- DEV_LOGIN_START -->
+        <template v-if="developmentLoginEnabled">
+          <view class="development-panel">
+            <text class="development-title">本地调试模式</text>
+            <text class="development-description">已跳过微信手机号授权，将使用本地测试员工进入系统。</text>
+            <button class="phone-login-button" :disabled="loading" @click="startDevelopmentLogin">
+              {{ loading ? "正在进入…" : "进入员工测试页面" }}
+            </button>
+          </view>
+        </template>
+        <!-- DEV_LOGIN_END -->
+        <template v-if="!developmentLoginEnabled">
+          <button
+            class="phone-login-button"
+            open-type="getPhoneNumber"
+            :disabled="loading"
+            @getphonenumber="onPhoneNumber"
+          >
+            {{ loading ? "登录中…" : "手机号快捷登录" }}
           </button>
-        </view>
-        <input class="uni-input" v-model="verifyCode" type="number" maxlength="6" placeholder="输入验证码" @confirm="doLogin" />
-        <button class="btn btn-primary" style="width:100%;margin-top:8px" @click="doLogin" :disabled="loading">
-          {{ loading ? "登录中..." : "登 录" }}
-        </button>
-      </view>
+          <button
+            id="privacy-authorize-button"
+            class="privacy-authorize-button"
+            open-type="agreePrivacyAuthorization"
+            @agreeprivacyauthorization="onAgreePrivacyAuthorization"
+          >
+            同意隐私指引
+          </button>
+          <text class="privacy-hint">仅用于匹配管理员已登记的员工信息，不会创建新账号</text>
+        </template>
+        <!-- #endif -->
 
-      <!-- 微信快捷登录（仅小程序） -->
-      <!-- #ifdef MP-WEIXIN -->
-      <view class="wx-section">
-        <view class="wx-divider"><text class="wx-divider-text">或</text></view>
-        <button class="btn btn-wx" @click="wechatLogin" :disabled="wxLoading">
-          {{ wxLoading ? "微信登录中..." : "微信快捷登录" }}
-        </button>
-      </view>
-      <!-- #endif -->
+        <!-- #ifndef MP-WEIXIN -->
+        <view class="environment-hint">请在微信小程序中使用手机号快捷登录</view>
+        <!-- #endif -->
+      </template>
 
-      <!-- 微信绑定弹窗 -->
-      <view v-if="showBindForm" class="modal-mask" @click="showBindForm=false">
-        <view class="modal-card" @click.stop>
-          <text class="modal-title">绑定账号</text>
-          <text class="bind-hint">首次使用微信，请验证手机号绑定已有账号</text>
-          <view class="phone-row">
-            <input class="uni-input phone-input" v-model="bindPhone" type="number" maxlength="11" placeholder="手机号" @confirm="sendBindCode" />
-            <button class="btn btn-code" @click="sendBindCode" :disabled="bindCodeSending || bindCodeCountdown > 0">
-              {{ bindCodeCountdown > 0 ? bindCodeCountdown + "s" : bindCodeSending ? "发送中..." : "获取验证码" }}
-            </button>
-          </view>
-          <input class="uni-input" v-model="bindCode" type="number" maxlength="6" placeholder="输入验证码" @confirm="doBind" />
-          <view class="modal-actions">
-            <button class="btn" @click="showBindForm=false">取消</button>
-            <button class="btn btn-primary" @click="doBind" :disabled="bindLoading">
-              {{ bindLoading ? "绑定中..." : "绑定并登录" }}
-            </button>
-          </view>
-        </view>
+      <view v-if="error" class="error-panel" role="alert">
+        <text class="error-title">暂时无法登录</text>
+        <text class="error-message">{{ error }}</text>
+        <text class="error-help">如手机号尚未登记或账号已停用，请联系管理员。</text>
       </view>
-
-      <text v-if="error" class="error-text">{{ error }}</text>
-      <text class="hint-text">管理员: admin / admin123 或 手机验证码</text>
     </view>
   </view>
 </template>
 
 <script>
 import { apiPost } from "../../utils/request"
-import { setStorage } from "../../utils/storage"
+import { getStorage, removeStorage, setStorage } from "../../utils/storage"
+
+/* DEV_LOGIN_START */
+// 开发服务器才会保留此入口；生产构建前由 vite.config.js 移除整个标记块。
+const developmentLoginEnabled = import.meta.env.DEV
+  && import.meta.env.VITE_ENABLE_DEV_LOGIN === "true"
+/* DEV_LOGIN_END */
 
 export default {
   data() {
     return {
-      tab: "account",
-      username: "", password: "",
-      phone: "", verifyCode: "",
-      loading: false, codeSending: false, codeCountdown: 0, codeTimer: null,
-      wxLoading: false, error: "",
-      // 微信绑定
-      showBindForm: false,
-      bindOpenid: "",
-      bindPhone: "", bindCode: "", bindLoading: false,
-      bindCodeSending: false, bindCodeCountdown: 0, bindCodeTimer: null,
+      checking: true,
+      loading: false,
+      error: "",
+      /* DEV_LOGIN_START */
+      developmentLoginEnabled,
+      /* DEV_LOGIN_END */
     }
   },
+  onLoad() {
+    this.tryAutoLogin()
+  },
   methods: {
-    switchTab(tab) {
-      this.tab = tab
-      this.error = ""
-    },
-    // 发送验证码
-    async sendCode() {
-      if (!this.phone || this.phone.length < 11) { this.error = "请输入正确的手机号"; return }
-      this.error = ""
-      this.codeSending = true
+    async tryAutoLogin() {
+      /* DEV_LOGIN_START */
+      if (this.developmentLoginEnabled) {
+        await this.startDevelopmentLogin()
+        return
+      }
+      /* DEV_LOGIN_END */
+      if (!getStorage("token")) {
+        this.checking = false
+        return
+      }
       try {
-        await apiPost("/send-code", { phone: this.phone })
-        this.startCountdown()
-      } catch (e) { this.error = e.message || "发送失败" }
-      finally { this.codeSending = false }
-    },
-    async sendBindCode() {
-      if (!this.bindPhone || this.bindPhone.length < 11) { this.error = "请输入正确的手机号"; return }
-      this.error = ""
-      this.bindCodeSending = true
-      try {
-        await apiPost("/send-code", { phone: this.bindPhone })
-        this.bindCodeCountdown = 60
-        if (this.bindCodeTimer) clearInterval(this.bindCodeTimer)
-        this.bindCodeTimer = setInterval(() => {
-          this.bindCodeCountdown--
-          if (this.bindCodeCountdown <= 0) clearInterval(this.bindCodeTimer)
-        }, 1000)
-      } catch (e) { this.error = e.message || "发送失败" }
-      finally { this.bindCodeSending = false }
-    },
-    startCountdown() {
-      this.codeCountdown = 60
-      if (this.codeTimer) clearInterval(this.codeTimer)
-      this.codeTimer = setInterval(() => {
-        this.codeCountdown--
-        if (this.codeCountdown <= 0) clearInterval(this.codeTimer)
-      }, 1000)
-    },
-    // 登录
-    async doLogin() {
-      this.error = ""
-      if (this.tab === "phone") {
-        if (!this.phone) { this.error = "请输入手机号"; return }
-        if (!this.verifyCode) { this.error = "请输入验证码"; return }
-        this.loading = true
-        try {
-          const data = await apiPost("/login/verify-code", { phone: this.phone, code: this.verifyCode })
-          this.onLoginSuccess(data)
-        } catch (e) { this.error = e.message || "登录失败" }
-        finally { this.loading = false }
-      } else {
-        if (!this.username) { this.error = "请输入用户名"; return }
-        if (!this.password) { this.error = "请输入密码"; return }
-        this.loading = true
-        try {
-          const data = await apiPost("/login", { username: this.username, password: this.password })
-          this.onLoginSuccess(data)
-        } catch (e) { this.error = e.message || "登录失败" }
-        finally { this.loading = false }
+        const data = await apiPost("/auto-login", {})
+        if (data.role !== "employee") throw new Error("请使用员工微信账号登录")
+        this.enterEmployee(data)
+      } catch (_error) {
+        removeStorage("token")
+        removeStorage("user")
+        this.checking = false
       }
     },
-    async wechatLogin() {
-      // #ifdef MP-WEIXIN
-      this.wxLoading = true; this.error = ""
+    /* DEV_LOGIN_START */
+    async startDevelopmentLogin() {
+      if (!this.developmentLoginEnabled || this.loading) return
+      this.loading = true
+      this.error = ""
       try {
-        const loginRes = await uni.login()
-        const data = await apiPost("/login/wechat", { code: loginRes.code })
-        if (data.need_bind) {
-          this.bindOpenid = data.wechat_openid
-          this.showBindForm = true
-          this.wxLoading = false
-          return
+        const data = await apiPost("/dev/login/employee", {})
+        if (data.role !== "employee" || !data.token) {
+          throw new Error("本地调试登录没有返回员工会话")
         }
-        this.onLoginSuccess(data)
-      } catch (e) { this.error = e.message || "微信登录失败" }
-      finally { this.wxLoading = false }
-      // #endif
+        this.enterEmployee(data)
+      } catch (error) {
+        this.error = error.message || "本地调试登录失败，请检查后端开发配置。"
+      } finally {
+        this.loading = false
+        this.checking = false
+      }
     },
-    async doBind() {
-      if (!this.bindPhone || !this.bindCode) { this.error = "请输入手机号和验证码"; return }
-      this.bindLoading = true; this.error = ""
+    /* DEV_LOGIN_END */
+    async onPhoneNumber(event) {
+      const detail = event && event.detail ? event.detail : {}
+      if (!detail.code || !String(detail.errMsg || "").includes("ok")) {
+        const errMsg = String(detail.errMsg || "未返回授权凭证")
+        console.warn("微信手机号授权失败", errMsg)
+        if (/deny|cancel/i.test(errMsg)) {
+          this.error = "您未同意手机号授权，请点击“同意隐私指引”后再重新登录。"
+        } else if (/privacy|permission|scope/i.test(errMsg)) {
+          this.error = "小程序尚未获得手机号接口权限，请管理员完成微信公众平台的隐私指引与认证配置。"
+        } else {
+          this.error = `微信未返回手机号授权凭证：${errMsg}`
+        }
+        return
+      }
+
+      this.loading = true
+      this.error = ""
       try {
-        const data = await apiPost("/login/bind-wechat", {
-          wechat_openid: this.bindOpenid,
-          phone: this.bindPhone,
-          code: this.bindCode,
+        const loginResult = await uni.login({ provider: "weixin" })
+        const loginData = Array.isArray(loginResult) ? loginResult[1] : loginResult
+        if (!loginData || !loginData.code) throw new Error("未能取得微信登录凭证，请重试")
+        const data = await apiPost("/login/wechat-phone", {
+          phone_code: detail.code,
+          login_code: loginData.code,
         })
-        this.showBindForm = false
-        this.onLoginSuccess(data)
-      } catch (e) { this.error = e.message || "绑定失败" }
-      finally { this.bindLoading = false }
+        if (data.role !== "employee") throw new Error("未找到员工信息，请联系管理员")
+        this.enterEmployee(data)
+      } catch (error) {
+        this.error = error.message || "微信登录失败，请稍后重试"
+      } finally {
+        this.loading = false
+      }
     },
-    onLoginSuccess(data) {
+    onAgreePrivacyAuthorization() {
+      this.error = ""
+    },
+    enterEmployee(data) {
       setStorage("token", data.token)
       setStorage("user", data)
-      if (data.role === "admin") {
-        uni.navigateTo({ url: "/pages/admin/app", redirect: true })
-      } else {
-        uni.navigateTo({ url: "/pages/employee/employee", redirect: true })
-      }
-    }
-  }
+      uni.reLaunch({ url: "/pages/employee/employee" })
+    },
+  },
 }
 </script>
 
 <style>
-.login-wrap {
-  display: flex; justify-content: center; align-items: center;
+.login-page {
   min-height: 100vh;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-}
-.login-card {
-  background: rgba(255,255,255,0.95); border-radius: 16px; padding: 32px 28px;
-  width: 380px; max-width: 90vw;
-  box-shadow: 0 20px 60px rgba(0,0,0,0.15);
-}
-.login-title {
-  display: block; text-align: center; margin-bottom: 20px;
-  font-size: 22px; color: #303133; font-weight: bold;
-}
-.tab-bar {
-  display: flex; margin-bottom: 16px; border-bottom: 1px solid #eee;
-}
-.tab-item {
-  flex: 1; text-align: center; padding: 8px 0; font-size: 14px;
-  color: #909399; position: relative; cursor: pointer;
-}
-.tab-item.active {
-  color: #409eff; font-weight: 600;
-}
-.tab-item.active::after {
-  content: ""; position: absolute; bottom: -1px; left: 20%; right: 20%;
-  height: 2px; background: #409eff; border-radius: 1px;
-}
-.login-card .uni-input {
-  display: block; width: 100%; height: 40px; line-height: 40px;
-  padding: 0 12px; border: 1px solid #dcdfe6; border-radius: 4px;
-  font-size: 14px; margin-bottom: 14px;
   box-sizing: border-box;
-}
-.phone-row { display: flex; gap: 8px; align-items: center; margin-bottom: 14px; }
-.phone-input { flex: 1; margin-bottom: 0 !important; }
-.btn-code {
-  white-space: nowrap; padding: 0 12px; height: 40px; line-height: 40px;
-  border: 1px solid #409eff; border-radius: 4px; background: #ecf5ff;
-  color: #409eff; font-size: 13px; cursor: pointer;
-}
-.btn-code[disabled] { border-color: #dcdfe6; background: #f5f5f5; color: #bbb; }
-.error-text {
-  display: block; color: #f56c6c; margin-top: 12px; text-align: center;
-}
-.hint-text {
-  display: block; margin-top: 16px; font-size: 12px;
-  color: #999; text-align: center;
-}
-.btn { display: inline-block; padding: 8px 14px; border: 1px solid #dcdfe6; border-radius: 4px; background: #fff; font-size: 14px; text-align: center; }
-.btn-primary {
-  background: #409eff; border-color: #409eff; color: #fff;
-  border-radius: 4px; padding: 8px; font-size: 14px; text-align: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: #f5f7fa;
 }
 
-/* 微信登录 */
-.wx-section { margin-top: 16px; }
-.wx-divider { display: flex; align-items: center; margin-bottom: 12px; }
-.wx-divider::before, .wx-divider::after { content: ""; flex: 1; height: 1px; background: #e0e0e0; }
-.wx-divider-text { padding: 0 12px; font-size: 12px; color: #ccc; }
-.btn-wx {
-  width: 100%; background: #07c160; border-color: #07c160; color: #fff;
-  border-radius: 4px; padding: 10px; font-size: 14px; cursor: pointer;
+.login-card {
+  width: 100%;
+  max-width: 420px;
+  box-sizing: border-box;
+  padding: 32px 24px;
+  border: 1px solid #d0d5dd;
+  border-radius: 12px;
+  background: #ffffff;
 }
 
-/* 绑定弹窗 */
-.modal-mask { position: fixed; inset: 0; background: rgba(0,0,0,0.4); display: flex; align-items: center; justify-content: center; z-index: 100; }
-.modal-card { background: #fff; border-radius: 10px; padding: 24px; width: 380px; max-width: 90vw; }
-.modal-title { font-size: 18px; font-weight: 600; margin-bottom: 8px; display: block; }
-.bind-hint { font-size: 13px; color: #909399; margin-bottom: 16px; display: block; }
-.modal-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 16px; }
+.brand-mark {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 56px;
+  height: 56px;
+  margin: 0 auto 16px;
+  border-radius: 12px;
+  background: #07c160;
+  color: #ffffff;
+  font-size: 26px;
+  font-weight: 700;
+}
+
+.login-title,
+.login-description,
+.privacy-hint,
+.error-title,
+.error-message,
+.error-help {
+  display: block;
+}
+
+.login-title {
+  color: #1f2937;
+  font-size: 24px;
+  font-weight: 700;
+  text-align: center;
+}
+
+.login-description {
+  margin-top: 8px;
+  color: #667085;
+  font-size: 16px;
+  line-height: 1.6;
+  text-align: center;
+}
+
+.phone-login-button {
+  width: 100%;
+  min-height: 52px;
+  margin-top: 28px;
+  border: 0;
+  border-radius: 8px;
+  background: #07c160;
+  color: #ffffff;
+  font-size: 18px;
+  font-weight: 600;
+  line-height: 52px;
+}
+
+.phone-login-button::after {
+  border: 0;
+}
+
+.phone-login-button[disabled] {
+  background: #9bdcb7;
+  color: #ffffff;
+}
+
+.privacy-authorize-button {
+  width: auto;
+  margin-top: 12px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: #475467;
+  font-size: 14px;
+  line-height: 1.5;
+  text-decoration: underline;
+}
+
+.privacy-authorize-button::after {
+  border: 0;
+}
+
+/* DEV_LOGIN_START */
+.development-panel {
+  margin-top: 28px;
+  padding: 16px;
+  border: 1px solid #b9d7c4;
+  border-radius: 8px;
+  background: #f2fbf5;
+}
+
+.development-title,
+.development-description {
+  display: block;
+}
+
+.development-title {
+  color: #16803c;
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.development-description {
+  margin-top: 6px;
+  color: #475467;
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.development-panel .phone-login-button {
+  margin-top: 16px;
+}
+/* DEV_LOGIN_END */
+
+.privacy-hint {
+  margin-top: 12px;
+  color: #667085;
+  font-size: 14px;
+  line-height: 1.6;
+  text-align: center;
+}
+
+.status-panel,
+.environment-hint {
+  margin-top: 28px;
+  padding: 16px;
+  border-radius: 8px;
+  background: #f2f4f7;
+  color: #475467;
+  font-size: 16px;
+  line-height: 1.5;
+  text-align: center;
+}
+
+.loading-dot {
+  width: 10px;
+  height: 10px;
+  margin: 0 auto 10px;
+  border-radius: 50%;
+  background: #07c160;
+}
+
+.error-panel {
+  margin-top: 20px;
+  padding: 16px;
+  border: 1px solid #fecdca;
+  border-radius: 8px;
+  background: #fff6f5;
+}
+
+.error-title {
+  color: #c4320a;
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.error-message {
+  margin-top: 6px;
+  color: #912018;
+  font-size: 16px;
+  line-height: 1.5;
+}
+
+.error-help {
+  margin-top: 8px;
+  color: #667085;
+  font-size: 14px;
+  line-height: 1.5;
+}
 </style>

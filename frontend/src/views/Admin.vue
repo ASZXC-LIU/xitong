@@ -180,22 +180,23 @@
       <div v-if="currentPage === 'cargoTypes'">
         <h2 class="page-title">货品种类管理</h2>
         <div class="card">
-          <div style="display:flex;gap:8px;margin-bottom:12px">
+          <div class="master-form">
             <input v-model="cargoForm.name" placeholder="种类名称" style="max-width:200px" />
             <input v-model="cargoForm.default_unit" list="default-unit-list" placeholder="默认单位" style="max-width:200px"
               autocomplete="off" />
             <datalist id="default-unit-list">
-              <option v-for="ut in unitTypes" :key="ut.id" :value="ut.name">{{ ut.name }}</option>
+              <option v-for="ut in activeUnitTypes" :key="ut.id" :value="ut.name">{{ ut.name }}</option>
             </datalist>
             <button class="btn btn-primary btn-sm" @click="addCargoType">添加</button>
           </div>
-          <p v-if="cargoMsg" style="color:#67c23a">{{ cargoMsg }}</p>
-          <table class="data-table">
+          <p v-if="cargoMsg" :class="['form-message', { 'is-error': cargoMsgError }]">{{ cargoMsg }}</p>
+          <div class="master-table-wrap"><table class="data-table">
             <thead>
               <tr>
                 <th>ID</th>
                 <th>种类名称</th>
                 <th>默认单位</th>
+                <th>状态</th>
                 <th>操作</th>
               </tr>
             </thead>
@@ -204,36 +205,50 @@
                 <td>{{ ct.id }}</td>
                 <td>{{ ct.name }}</td>
                 <td>{{ ct.default_unit }}</td>
-                <td><button class="btn btn-sm btn-danger" @click="deleteCargoType(ct.id)">删除</button></td>
+                <td><span :class="['status-badge', ct.is_active ? 'is-active' : 'is-inactive']">{{ ct.is_active ? '启用' : '停用' }}</span></td>
+                <td class="action-cell">
+                  <button class="btn btn-sm" @click="editCargoType(ct)">编辑</button>
+                  <button :class="['btn','btn-sm', ct.is_active ? 'btn-danger' : 'btn-status']" @click="toggleCargoType(ct)">{{ ct.is_active ? '停用' : '启用' }}</button>
+                </td>
               </tr>
             </tbody>
-          </table>
+          </table></div>
+        </div>
+
+        <div v-if="showCargoEditModal" class="modal-mask" @click.self="showCargoEditModal=false">
+          <div class="modal-card master-edit-modal">
+            <h3>编辑产品</h3>
+            <div class="form-group"><label>产品名称</label><input v-model="cargoEditForm.name" /></div>
+            <div class="form-group"><label>默认单位</label><input v-model="cargoEditForm.default_unit" list="default-unit-list" /></div>
+            <p v-if="cargoEditMsg" class="form-error">{{ cargoEditMsg }}</p>
+            <div class="modal-actions"><button class="btn" @click="showCargoEditModal=false">取消</button><button class="btn btn-primary" @click="saveCargoEdit">保存修改</button></div>
+          </div>
         </div>
       </div>
 
       <div v-if="currentPage==='employeeMgmt'">
         <h2 class="page-title">人员管理</h2>
         <div class="card">
-          <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;">
+          <div class="master-form">
             <input v-model="empForm.display_name" placeholder="员工姓名" style="max-width:150px" />
-            <input v-model="empForm.username" type="number" placeholder="手机号(即登录账号)" style="max-width:180px" />
-            <input v-model="empForm.password" type="password" placeholder="密码(默认123456)" style="max-width:150px" />
+            <input v-model="empForm.phone" inputmode="numeric" maxlength="11" placeholder="员工手机号" style="max-width:180px" />
             <button class="btn btn-primary btn-sm" @click="addEmployee">添加</button>
           </div>
-          <p v-if="empMsg" style="color:#67c23a;margin-bottom:10px;">{{ empMsg }}</p>
-          <table class="data-table">
-            <thead><tr><th>ID</th><th>姓名</th><th>手机号(登录账号)</th><th>角色</th><th>操作</th></tr></thead>
+          <p v-if="empMsg" :class="['form-message', { 'is-error': empMsgError }]">{{ empMsg }}</p>
+          <div class="master-table-wrap"><table class="data-table">
+            <thead><tr><th>ID</th><th>姓名</th><th>手机号</th><th>角色</th><th>状态</th><th>操作</th></tr></thead>
             <tbody>
               <tr v-for="e in employees" :key="e.id">
-                <td>{{ e.id }}</td><td>{{ e.display_name }}</td><td>{{ e.username }}</td>
+                <td>{{ e.id }}</td><td>{{ e.display_name }}</td><td>{{ e.phone || e.username }}</td>
                 <td><span :style="e.role === 'admin' ? 'color:#e6a23c;font-weight:bold;' : ''">{{ e.role === 'admin' ? '管理员' : '员工' }}</span></td>
-                <td>
-                  <button class="btn btn-sm" @click="editEmployee(e)" style="margin-right: 6px; border-color: #409eff; color: #409eff;">编辑</button>
-                  <button v-if="e.role !== 'admin'" class="btn btn-sm btn-danger" @click="deleteEmployee(e.id)">删除</button>
+                <td><span :class="['status-badge', e.is_active ? 'is-active' : 'is-inactive']">{{ e.is_active ? '启用' : '停用' }}</span></td>
+                <td class="action-cell">
+                  <button v-if="e.role !== 'admin'" class="btn btn-sm" @click="editEmployee(e)">编辑</button>
+                  <button v-if="e.role !== 'admin'" :class="['btn','btn-sm', e.is_active ? 'btn-danger' : 'btn-status']" @click="toggleEmployee(e)">{{ e.is_active ? '停用' : '启用' }}</button>
                 </td>
               </tr>
             </tbody>
-          </table>
+          </table></div>
         </div>
 
         <div v-if="showEmpEditModal" class="modal-mask" @click.self="showEmpEditModal=false">
@@ -244,12 +259,8 @@
               <input v-model="empEditForm.display_name" placeholder="姓名" />
             </div>
             <div class="form-group">
-              <label>手机号(登录账号)</label>
-              <input v-model="empEditForm.username" type="number" placeholder="11位手机号" />
-            </div>
-            <div class="form-group">
-              <label>新密码</label>
-              <input v-model="empEditForm.password" type="password" placeholder="不填则代表不修改密码" />
+              <label>员工手机号</label>
+              <input v-model="empEditForm.phone" inputmode="numeric" maxlength="11" placeholder="11位手机号" />
             </div>
             <div class="modal-actions">
               <button class="btn" @click="showEmpEditModal=false">取消</button>
@@ -263,16 +274,17 @@
       <div v-if="currentPage === 'unitTypes'">
         <h2 class="page-title">单位管理</h2>
         <div class="card">
-          <div style="display:flex;gap:8px;margin-bottom:12px">
+          <div class="master-form">
             <input v-model="unitForm.name" placeholder="单位名称" style="max-width:200px" />
             <button class="btn btn-primary btn-sm" @click="addUnitType">添加</button>
           </div>
-          <p v-if="unitMsg" style="color:#67c23a">{{ unitMsg }}</p>
-          <table class="data-table">
+          <p v-if="unitMsg" :class="['form-message', { 'is-error': unitMsgError }]">{{ unitMsg }}</p>
+          <div class="master-table-wrap"><table class="data-table">
             <thead>
               <tr>
                 <th>ID</th>
                 <th>单位名称</th>
+                <th>状态</th>
                 <th>操作</th>
               </tr>
             </thead>
@@ -280,13 +292,23 @@
               <tr v-for="ut in unitTypes" :key="ut.id">
                 <td>{{ ut.id }}</td>
                 <td>{{ ut.name }}</td>
-                <td>
+                <td><span :class="['status-badge', ut.is_active ? 'is-active' : 'is-inactive']">{{ ut.is_active ? '启用' : '停用' }}</span></td>
+                <td class="action-cell">
                   <button class="btn btn-sm" @click="editUnitType(ut)">编辑</button>
-                  <button class="btn btn-sm btn-danger" @click="deleteUnitType(ut.id)">删除</button>
+                  <button :class="['btn','btn-sm', ut.is_active ? 'btn-danger' : 'btn-status']" @click="toggleUnitType(ut)">{{ ut.is_active ? '停用' : '启用' }}</button>
                 </td>
               </tr>
             </tbody>
-          </table>
+          </table></div>
+        </div>
+
+        <div v-if="showUnitEditModal" class="modal-mask" @click.self="showUnitEditModal=false">
+          <div class="modal-card master-edit-modal">
+            <h3>编辑单位</h3>
+            <div class="form-group"><label>单位名称</label><input v-model="unitEditForm.name" /></div>
+            <p v-if="unitEditMsg" class="form-error">{{ unitEditMsg }}</p>
+            <div class="modal-actions"><button class="btn" @click="showUnitEditModal=false">取消</button><button class="btn btn-primary" @click="saveUnitEdit">保存修改</button></div>
+          </div>
         </div>
       </div>
 
@@ -532,28 +554,44 @@ import * as XLSX from 'xlsx';
 
 const API = "/api"
 
+function authHeaders(extra = {}) {
+  const token = localStorage.getItem("token")
+  return token ? { ...extra, Authorization: `Bearer ${token}` } : extra
+}
+
+async function parseApiResponse(response) {
+  const data = await response.json().catch(() => ({}))
+  if (response.status === 401) {
+    localStorage.removeItem("token")
+    localStorage.removeItem("user")
+    window.location.hash = "#/login"
+  }
+  if (!response.ok) throw new Error(data.error || response.statusText || "请求失败")
+  return data
+}
+
 async function apiGet(url) {
-  const r = await fetch(url);
-  if (!r.ok) throw new Error((await r.json()).error || r.statusText);
-  return r.json();
+  return parseApiResponse(await fetch(url, { headers: authHeaders() }));
 }
 
 async function apiPost(url, body) {
-  const r = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
-  if (!r.ok) throw new Error((await r.json()).error || r.statusText);
-  return r.json();
+  return parseApiResponse(await fetch(url, {
+    method: "POST",
+    headers: authHeaders({ "Content-Type": "application/json" }),
+    body: JSON.stringify(body)
+  }));
 }
 
 async function apiPut(url, body) {
-  const r = await fetch(url, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
-  if (!r.ok) throw new Error((await r.json()).error || r.statusText);
-  return r.json();
+  return parseApiResponse(await fetch(url, {
+    method: "PUT",
+    headers: authHeaders({ "Content-Type": "application/json" }),
+    body: JSON.stringify(body)
+  }));
 }
 
 async function apiDelete(url) {
-  const r = await fetch(url, { method: "DELETE" });
-  if (!r.ok) throw new Error((await r.json()).error || r.statusText);
-  return r.json();
+  return parseApiResponse(await fetch(url, { method: "DELETE", headers: authHeaders() }));
 }
 
 export default {
@@ -570,11 +608,18 @@ export default {
       unitTypes: [],
       cargoForm: { name: "", default_unit: "" },
       unitForm: { name: "" },
-      empForm: { display_name: "", phone: "", username: "", password: "" },
+      empForm: { display_name: "", phone: "" },
+      showCargoEditModal: false,
+      cargoEditForm: { id: null, name: "", default_unit: "" },
+      cargoEditMsg: "",
+      showUnitEditModal: false,
+      unitEditForm: { id: null, name: "" },
+      unitEditMsg: "",
       showEmpEditModal: false,
-      empEditForm: { id: null, display_name: "", username: "", password: "" },
+      empEditForm: { id: null, display_name: "", phone: "" },
       empEditMsg: "",
       cargoMsg: "", empMsg: "", unitMsg: "",
+      cargoMsgError: false, empMsgError: false, unitMsgError: false,
       showBatchForm: false,
       editingBatchId: null,
       batchForm: { name: "", arrival_time: "", batch_remark: "", batch_date: new Date().toISOString().slice(0, 10) },
@@ -616,11 +661,16 @@ export default {
     matrixEmployees() {
       const order = {}
       this.employees.forEach((e, i) => { order[e.id] = i })
-      return this.employees.map(e => ({ id: e.id, name: e.display_name || e.name }))
+      return this.employees.filter(e => e.role === 'employee' && e.is_active)
+        .map(e => ({ id: e.id, name: e.display_name || e.name }))
     },
     summaryEmployees() {
       if (!this.employees || !this.employees.length) return []
-      return this.employees.map(e => ({ id: e.id, name: e.display_name || e.name }))
+      return this.employees.filter(e => e.role === 'employee')
+        .map(e => ({ id: e.id, name: e.display_name || e.name }))
+    },
+    activeUnitTypes() {
+      return this.unitTypes.filter(unit => unit.is_active)
     },
     sortedBatches() {
       return [...this.batches].sort((a, b) => {
@@ -1207,66 +1257,112 @@ export default {
       setTimeout(() => { win.print(); win.close() }, 300)
     },
     async addCargoType() {
-      if (!this.cargoForm.name) return
-      await apiPost(API + "/cargo-types", this.cargoForm)
-      this.cargoForm = { name: "", default_unit: "" }
-      this.cargoMsg = "添加成功"
-      this.loadCargoTypes()
+      if (!this.cargoForm.name.trim()) { this.cargoMsg = "请输入产品名称"; this.cargoMsgError = true; return }
+      try {
+        await apiPost(API + "/cargo-types", this.cargoForm)
+        this.cargoForm = { name: "", default_unit: "" }
+        this.cargoMsg = "产品添加成功"
+        this.cargoMsgError = false
+        await this.loadCargoTypes()
+      } catch (e) { this.cargoMsg = e.message || "添加失败"; this.cargoMsgError = true }
     },
-    async deleteCargoType(id) {
-      if (!confirm("确认删除?")) return
-      await apiDelete(API + "/cargo-types/" + id)
-      this.loadCargoTypes()
+    editCargoType(cargo) {
+      this.cargoEditForm = { id: cargo.id, name: cargo.name, default_unit: cargo.default_unit || "" }
+      this.cargoEditMsg = ""
+      this.showCargoEditModal = true
+    },
+    async saveCargoEdit() {
+      if (!this.cargoEditForm.name.trim()) { this.cargoEditMsg = "产品名称不能为空"; return }
+      try {
+        await apiPut(API + "/cargo-types/" + this.cargoEditForm.id, {
+          name: this.cargoEditForm.name,
+          default_unit: this.cargoEditForm.default_unit,
+        })
+        this.showCargoEditModal = false
+        this.cargoMsg = "产品信息已更新"
+        this.cargoMsgError = false
+        await this.loadCargoTypes()
+      } catch (e) { this.cargoEditMsg = e.message || "修改失败" }
+    },
+    async toggleCargoType(cargo) {
+      if (cargo.is_active && !confirm(`停用“${cargo.name}”后将不能用于新建批次，历史批次不受影响。确认停用？`)) return
+      try {
+        await apiPut(API + "/cargo-types/" + cargo.id, { is_active: !cargo.is_active })
+        this.cargoMsg = cargo.is_active ? "产品已停用，历史数据已保留" : "产品已启用"
+        this.cargoMsgError = false
+        await this.loadCargoTypes()
+      } catch (e) { this.cargoMsg = e.message || "操作失败"; this.cargoMsgError = true }
     },
     async addUnitType() {
-      if (!this.unitForm.name) return
-      await apiPost(API + "/unit-types", this.unitForm)
-      this.unitForm = { name: "" }
-      this.unitMsg = "添加成功"
-      this.loadUnitTypes()
+      if (!this.unitForm.name.trim()) { this.unitMsg = "请输入单位名称"; this.unitMsgError = true; return }
+      try {
+        await apiPost(API + "/unit-types", this.unitForm)
+        this.unitForm = { name: "" }
+        this.unitMsg = "单位添加成功"
+        this.unitMsgError = false
+        await this.loadUnitTypes()
+      } catch (e) { this.unitMsg = e.message || "添加失败"; this.unitMsgError = true }
     },
     editUnitType(ut) {
-      const newName = prompt("输入新名", ut.name)
-      if (newName && newName !== ut.name) {
-        apiPut(API + "/unit-types/" + ut.id, { name: newName }).then(() => this.loadUnitTypes())
-      }
+      this.unitEditForm = { id: ut.id, name: ut.name }
+      this.unitEditMsg = ""
+      this.showUnitEditModal = true
     },
-    async deleteUnitType(id) {
-      if (!confirm("确认删除?")) return
-      await apiDelete(API + "/unit-types/" + id)
-      this.loadUnitTypes()
+    async saveUnitEdit() {
+      if (!this.unitEditForm.name.trim()) { this.unitEditMsg = "单位名称不能为空"; return }
+      try {
+        await apiPut(API + "/unit-types/" + this.unitEditForm.id, { name: this.unitEditForm.name })
+        this.showUnitEditModal = false
+        this.unitMsg = "单位信息已更新"
+        this.unitMsgError = false
+        await this.loadUnitTypes()
+      } catch (e) { this.unitEditMsg = e.message || "修改失败" }
+    },
+    async toggleUnitType(unit) {
+      if (unit.is_active && !confirm(`停用“${unit.name}”后将不能用于新产品，历史批次不受影响。确认停用？`)) return
+      try {
+        await apiPut(API + "/unit-types/" + unit.id, { is_active: !unit.is_active })
+        this.unitMsg = unit.is_active ? "单位已停用，历史数据已保留" : "单位已启用"
+        this.unitMsgError = false
+        await this.loadUnitTypes()
+      } catch (e) { this.unitMsg = e.message || "操作失败"; this.unitMsgError = true }
     },
     async addEmployee() {
       if (!this.empForm.display_name) {
         alert("请输入员工姓名");
         return;
       }
-      if (!/^1[3-9]\d{9}$/.test(this.empForm.username)) {
-        alert("请输入正确的11位手机号作为账号");
+      if (!/^1[3-9]\d{9}$/.test(this.empForm.phone)) {
+        alert("请输入正确的11位员工手机号");
         return;
       }
 
       try {
         await apiPost(API + "/employees", this.empForm)
-        this.empForm = { display_name: "", username: "", password: "" }
-        this.empMsg = "添加成功！默认密码为123456"
+        this.empForm = { display_name: "", phone: "" }
+        this.empMsg = "添加成功！员工将使用微信手机号快捷登录"
+        this.empMsgError = false
         this.loadEmployees()
         setTimeout(() => { this.empMsg = "" }, 3000);
       } catch (e) {
-        alert(e.message || "添加失败，该手机号可能已存在");
+        this.empMsg = e.message || "添加失败，该手机号可能已存在";
+        this.empMsgError = true;
       }
     },
-    async deleteEmployee(id) {
-      if (!confirm("确认删除?")) return
-      await apiDelete(API + "/employees/" + id)
-      this.loadEmployees()
+    async toggleEmployee(employee) {
+      if (employee.is_active && !confirm(`停用“${employee.display_name}”后将无法登录，历史记录不受影响。确认停用？`)) return
+      try {
+        await apiPut(API + "/employees/" + employee.id, { is_active: !employee.is_active })
+        this.empMsg = employee.is_active ? "员工已停用，历史记录已保留" : "员工已启用"
+        this.empMsgError = false
+        await this.loadEmployees()
+      } catch (e) { this.empMsg = e.message || "操作失败"; this.empMsgError = true }
     },
     editEmployee(e) {
       this.empEditForm = {
         id: e.id,
         display_name: e.display_name,
-        username: e.username,
-        password: "" 
+        phone: e.phone || e.username
       };
       this.empEditMsg = "";
       this.showEmpEditModal = true;
@@ -1276,19 +1372,16 @@ export default {
         this.empEditMsg = "姓名不能为空";
         return;
       }
-      if (!/^1[3-9]\d{9}$/.test(this.empEditForm.username)) {
-        this.empEditMsg = "请输入正确的11位手机号作为账号";
+      if (!/^1[3-9]\d{9}$/.test(this.empEditForm.phone)) {
+        this.empEditMsg = "请输入正确的11位员工手机号";
         return;
       }
       
       try {
         const payload = {
           display_name: this.empEditForm.display_name,
-          username: this.empEditForm.username,
+          phone: this.empEditForm.phone,
         };
-        if (this.empEditForm.password) {
-          payload.password = this.empEditForm.password;
-        }
 
         await apiPut(API + "/employees/" + this.empEditForm.id, payload);
         
@@ -1296,6 +1389,7 @@ export default {
         this.loadEmployees(); 
         
         this.empMsg = "信息修改成功！";
+        this.empMsgError = false;
         setTimeout(() => { this.empMsg = ""; }, 3000);
       } catch (e) {
         this.empEditMsg = e.message || "修改失败，手机号可能被占用";
@@ -1391,6 +1485,7 @@ export default {
     },
     logout() {
       localStorage.removeItem("user")
+      localStorage.removeItem("token")
       this.$router.push("/login")
     },
     showItemDetail(item) {
@@ -2491,5 +2586,90 @@ body {
   white-space: nowrap;
   color: #909399;
   font-size: 12px;
+}
+
+.master-form {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+
+.master-table-wrap {
+  width: 100%;
+  overflow-x: auto;
+}
+
+.master-table-wrap .data-table {
+  min-width: 680px;
+}
+
+.status-badge {
+  display: inline-block;
+  min-width: 52px;
+  padding: 4px 8px;
+  border-radius: 999px;
+  font-size: 13px;
+  text-align: center;
+}
+
+.status-badge.is-active {
+  color: #16803c;
+  background: #ecfdf3;
+}
+
+.status-badge.is-inactive {
+  color: #667085;
+  background: #f2f4f7;
+}
+
+.action-cell {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  white-space: nowrap;
+}
+
+.btn-status {
+  color: #16803c;
+  border-color: #16803c;
+  background: #fff;
+}
+
+.form-message {
+  color: #16803c;
+  margin-bottom: 10px;
+}
+
+.form-message.is-error {
+  color: #c4320a;
+}
+
+.form-error {
+  color: #c4320a;
+  margin-top: 8px;
+}
+
+.master-edit-modal {
+  width: 380px;
+}
+
+@media (max-width: 768px) {
+  .master-form {
+    align-items: stretch;
+  }
+
+  .master-form input,
+  .master-form button {
+    width: 100%;
+    max-width: none !important;
+    min-height: 44px;
+  }
+
+  .action-cell .btn {
+    min-height: 44px;
+    min-width: 64px;
+  }
 }
 </style>

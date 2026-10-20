@@ -8,7 +8,6 @@
       <input class="uni-input inline" v-model="form.display_name" placeholder="姓名" />
       <input class="uni-input inline" v-model="form.phone" type="number" maxlength="11" placeholder="手机号" />
       <input class="uni-input inline" v-model="form.username" placeholder="用户名" />
-      <input class="uni-input inline" v-model="form.password" placeholder="密码" type="password" />
       <button class="btn btn-sm btn-primary" @click="save">保存</button>
       <button class="btn btn-sm" @click="showForm=false">取消</button>
     </view>
@@ -31,11 +30,11 @@
 <script>
 import { loadEmployees, createEmployee } from "../../utils/admin-api"
 export default {
-  data() { return { list: [], showForm: false, form: { display_name: "", phone: "", username: "", password: "" } } },
+  data() { return { list: [], showForm: false, form: { display_name: "", phone: "", username: "" } } },
   async onShow() { try { this.list = await loadEmployees() } catch(e) { console.error(e) } },
   methods: {
     async save() {
-      try { await createEmployee(this.form); this.showForm = false; this.form = { display_name: "", phone: "", username: "", password: "" }; this.list = await loadEmployees() } catch(e) { console.error(e) }
+      try { await createEmployee(this.form); this.showForm = false; this.form = { display_name: "", phone: "", username: "" }; this.list = await loadEmployees() } catch(e) { console.error(e) }
     }
   }
 }

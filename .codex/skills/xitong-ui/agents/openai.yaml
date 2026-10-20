@@ -1,0 +1,7 @@
+interface:
+  display_name: "分单系统 UI 规范"
+  short_description: "规范管理员网页、管理员移动端与员工小程序的功能一致性和简洁交互"
+  default_prompt: "Use $xitong-ui to design or review this project UI according to its role-specific interaction rules."
+
+policy:
+  allow_implicit_invocation: true

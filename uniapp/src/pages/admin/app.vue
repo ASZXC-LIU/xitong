@@ -311,8 +311,7 @@
         <view class="card">
           <view class="form-inline-card">
             <input class="uni-input inline" v-model="empForm.display_name" placeholder="姓名" />
-            <input class="uni-input inline" v-model="empForm.username" placeholder="登录名" />
-            <input class="uni-input inline" v-model="empForm.password" type="password" placeholder="密码" />
+            <input class="uni-input inline" v-model="empForm.username" type="number" placeholder="员工手机号" />
             <button class="btn btn-sm btn-primary" @click="addEmployee">添加</button>
           </view>
           <text v-if="empMsg" class="success-msg">{{ empMsg }}</text>
@@ -320,7 +319,7 @@
             <view class="dtr dth">
               <text class="dtc-id">ID</text>
               <text class="dtc-name">姓名</text>
-              <text class="dtc-name">登录</text>
+              <text class="dtc-name">手机号</text>
               <text class="dtc-unit">角色</text>
               <text class="dtc-action">操作</text>
             </view>
@@ -457,7 +456,7 @@ export default {
       // Cargo types
       cargoTypes: [], cargoForm: { name: "", default_unit: "" }, cargoMsg: "",
       // Employee mgmt
-      employeesList: [], empForm: { display_name: "", username: "", password: "" }, empMsg: "",
+      employeesList: [], empForm: { display_name: "", username: "" }, empMsg: "",
       // Unit types
       unitTypes: [], unitForm: { name: "" }, unitMsg: "",
       // Tooltip
@@ -978,7 +977,7 @@ export default {
       if (!this.empForm.display_name || !this.empForm.username) return
       try {
         await apiPost("/employees", this.empForm)
-        this.empForm = { display_name: "", username: "", password: "" }
+        this.empForm = { display_name: "", username: "" }
         this.empMsg = "添加成功"
         await this.loadEmployees()
       } catch (e) { console.error(e) }
