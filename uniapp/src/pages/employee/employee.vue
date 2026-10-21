@@ -25,53 +25,41 @@
       </view>
     </view>
 
-    <!-- 货品列表（表格） -->
-    <view v-if="selectedBatchId" class="table-wrap">
+    <!-- 货品列表 -->
+    <view v-if="selectedBatchId" class="task-wrap">
       <view class="table-toolbar">
         <text class="table-info">{{ batchName }} - 共 {{ myItems.length }} 种货品</text>
       </view>
       <view v-if="myItems.length === 0" class="empty-state">
         <text class="empty-icon">暂无货品</text>
       </view>
-      <view v-else class="matrix-table-wrap">
-        <view class="emp-table" style="display:table;width:100%;border-collapse:collapse;font-size:13px;min-width:500px">
-          <!-- thead -->
-          <view style="display:table-header-group">
-            <view style="display:table-row">
-              <view style="display:table-cell;padding:8px 6px;border-bottom:2px solid #000;text-align:center;font-weight:700;font-size:12px;background:#d9e1f2;color:#333;white-space:nowrap">货品名称</view>
-              <view style="display:table-cell;padding:8px 6px;border-bottom:2px solid #000;text-align:center;font-weight:700;font-size:12px;background:#d9e1f2;color:#333;white-space:nowrap">单位</view>
-              <view style="display:table-cell;padding:8px 6px;border-bottom:2px solid #000;text-align:center;font-weight:700;font-size:12px;background:#d9e1f2;color:#333;white-space:nowrap">分货数量</view>
-              <view style="display:table-cell;padding:8px 6px;border-bottom:2px solid #000;text-align:center;font-weight:700;font-size:12px;background:#d9e1f2;color:#333;white-space:nowrap">报货数量</view>
-              <view style="display:table-cell;padding:8px 6px;border-bottom:2px solid #000;text-align:center;font-weight:700;font-size:12px;background:#d9e1f2;color:#333;white-space:nowrap">状态</view>
-              <view style="display:table-cell;padding:8px 6px;border-bottom:2px solid #000;text-align:center;font-weight:700;font-size:12px;background:#d9e1f2;color:#333;white-space:nowrap">操作</view>
-            </view>
+      <view v-else class="task-list">
+        <view v-for="item in myItems" :key="item.item_id" class="product-card">
+          <view class="product-card-header">
+            <text class="product-name">{{ item.item_name }}</text>
+            <text :class="'tag ' + statusTag(item)">{{ itemStatusText(item) }}</text>
           </view>
-          <!-- tbody -->
-          <view style="display:table-row-group">
-            <view v-for="item in myItems" :key="item.item_id" style="display:table-row">
-              <view style="display:table-cell;padding:6px 4px;border-bottom:1px solid #e0e0e0;text-align:left;font-weight:500;padding-left:10px;white-space:nowrap">
-                <text>{{ item.item_name }}</text>
-              </view>
-              <view style="display:table-cell;padding:6px 4px;border-bottom:1px solid #e0e0e0;text-align:center;color:#909399;font-size:12px">
-                <text>{{ item.item_unit }}</text>
-              </view>
-              <view style="display:table-cell;padding:6px 4px;border-bottom:1px solid #e0e0e0;text-align:center;color:#e6a23c;font-weight:500">
-                <text>{{ item.allocated_quantity }}</text>
-              </view>
-              <view style="display:table-cell;padding:6px 4px;border-bottom:1px solid #e0e0e0;text-align:center;min-width:100px">
-                <input type="number" :value="item.editQty" step="any" min="0" class="qty-input" @blur="onQtyBlur(item, $event)" @confirm="onQtyConfirm(item, $event)" :placeholder="item.item_unit" style="width:80px;padding:6px 8px;border:1px solid #dcdfe6;border-radius:4px;font-size:13px;text-align:center" />
-              </view>
-              <view style="display:table-cell;padding:6px 4px;border-bottom:1px solid #e0e0e0;text-align:center">
-                <text :class="'tag ' + statusTag(item)" style="display:inline-block;padding:2px 8px;border-radius:10px;font-size:11px">{{ itemStatusText(item) }}</text>
-              </view>
-              <view style="display:table-cell;padding:6px 4px;border-bottom:1px solid #e0e0e0;text-align:center;white-space:nowrap">
-                <button class="btn btn-sm btn-primary" @click="submitItem(item)" :disabled="item.saving" style="padding:4px 10px;font-size:12px">
-                  <text>{{ item.saving ? '...' : '保存' }}</text>
-                </button>
-                <text v-if="item.saved" style="color:#67c23a;font-weight:bold;margin-left:4px">✓</text>
-                <text v-if="item.error" style="color:#f56c6c;font-weight:bold;margin-left:4px">!</text>
-              </view>
-            </view>
+          <text class="allocation-text">分给您：{{ formatQuantity(item.allocated_quantity) }} {{ item.item_unit }}</text>
+
+          <view v-if="isLocked(item)" class="locked-result">
+            <text class="reported-text">已报货：{{ formatQuantity(item.actual_quantity) }} {{ item.item_unit }}</text>
+            <text class="locked-text">已锁定</text>
+          </view>
+
+          <view v-else class="report-form">
+            <text class="field-label">实际报货数量（{{ item.item_unit }}）</text>
+            <input
+              type="number"
+              :value="item.editQty"
+              class="qty-input"
+              placeholder="请输入数量"
+              @input="onQtyInput(item, $event)"
+            />
+            <text class="field-help">没有货请填 0 后确认</text>
+            <text v-if="item.error" class="field-error">{{ item.error }}</text>
+            <button class="btn btn-primary submit-button" @click="submitItem(item)" :disabled="item.saving">
+              <text>{{ item.saving ? '提交中' : '确认报货' }}</text>
+            </button>
           </view>
         </view>
       </view>
@@ -113,30 +101,35 @@ export default {
   },
   methods: {
     statusTag(item) {
-      if (item.actual_quantity != null && Number(item.actual_quantity) > 0) return 'tag-success'
+      if (this.isLocked(item)) return 'tag-success'
       if (item.allocated_quantity > 0) return 'tag-warning'
       return 'tag-default'
     },
     itemStatusText(item) {
-      if (item.actual_quantity != null && Number(item.actual_quantity) > 0) return '已报货'
+      if (this.isLocked(item)) return '已锁定'
       if (item.allocated_quantity > 0) return '待报货'
       return '未分配'
     },
+    isLocked(item) {
+      return item.report_status === '已锁定'
+    },
+    formatQuantity(value) {
+      return value == null ? '-' : value
+    },
     async loadMyBatches() {
       try {
-        this.myBatches = await apiGet('/employee/my-batches?user_id=' + this.user.id)
+        this.myBatches = await apiGet('/employee/my-batches')
       } catch (e) {
         console.error('loadMyBatches', e)
       }
     },
     async selectBatchById(batchId) {
       try {
-        var data = await apiGet('/employee/my-items?user_id=' + this.user.id + '&batch_id=' + batchId)
-        var self = this
+        var data = await apiGet('/employee/my-items?batch_id=' + batchId)
         this.myItems = data.map(function(item) {
           return {
             ...item,
-            editQty: item.actual_quantity ?? item.allocated_quantity,
+            editQty: '',
             saving: false, saved: false, error: ""
           }
         })
@@ -154,16 +147,24 @@ export default {
       this.myItems = []
       this.batchName = ""
     },
-    onQtyBlur(item, event) {
-      item.editQty = Number(event.detail.value) || 0
-      this.submitItem(item)
+    onQtyInput(item, event) {
+      item.editQty = event.detail.value
+      item.error = ''
     },
-    onQtyConfirm(item, event) {
-      item.editQty = Number(event.detail.value) || 0
-      this.submitItem(item)
+    reportQuantityError(item) {
+      const value = String(item.editQty ?? '').trim()
+      if (!value) return '请填写报货数量；没有货请填 0'
+      if (!/^\d+(\.\d)?$/.test(value)) return '数量只能是最多一位小数的非负数字'
+      if (Number(value) > Number(item.allocated_quantity)) return '报货数量不能大于分货数量'
+      return ''
     },
     async submitItem(item) {
-      if (item.saving) return
+      if (item.saving || this.isLocked(item)) return
+      const quantityError = this.reportQuantityError(item)
+      if (quantityError) {
+        item.error = quantityError
+        return
+      }
       if (item._timeout) clearTimeout(item._timeout)
       item.saving = true
       item.saved = false
@@ -171,15 +172,14 @@ export default {
       try {
         var payload = {
           assignment_id: item.assignment_id,
-          batch_item_id: item.item_id,
-          user_id: this.user.id,
-          actual_quantity: Number(item.editQty) || 0
+          actual_quantity: Number(item.editQty)
         }
         var data = await apiPost('/employee/submit', payload)
         item.assignment_id = data.assignment_id || item.assignment_id
         item.saved = true
-        item.actual_quantity = Number(item.editQty) || 0
-        this.saveMsg = '已保存'
+        item.actual_quantity = Number(item.editQty)
+        item.report_status = '已锁定'
+        this.saveMsg = '报货已提交并锁定'
         this.saveOk = true
         var self = this
         setTimeout(function() { self.saveMsg = '' }, 2000)
@@ -204,7 +204,7 @@ export default {
 page { background: #f5f6fa; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; color: #333; }
 view, text, input, button { box-sizing: border-box; }
 
-.emp-page { max-width: 800px; margin: 0 auto; padding: 12px; font-size: 14px; }
+.emp-page { max-width: 800px; margin: 0 auto; padding: 12px; font-size: 16px; }
 .emp-header { display: flex; align-items: center; gap: 8px; margin-bottom: 16px; padding-bottom: 12px; border-bottom: 1px solid #eee; flex-wrap: wrap; }
 .emp-title { flex: 1; font-size: 18px; font-weight: 600; color: #303133; }
 .emp-user-info { display: flex; align-items: center; gap: 8px; }
@@ -219,20 +219,28 @@ view, text, input, button { box-sizing: border-box; }
 .batch-card-meta { display: flex; gap: 16px; font-size: 13px; color: #606266; }
 .batch-card-date { font-size: 12px; color: #bbb; margin-top: 6px; display: block; }
 
-.table-wrap { background: #fff; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.06); overflow: hidden; }
+.task-wrap { overflow: hidden; }
 .table-toolbar { padding: 12px 14px; border-bottom: 1px solid #eee; background: #fafafa; }
-.table-info { font-size: 13px; color: #606266; }
-.matrix-table-wrap { overflow-x: auto; }
-.emp-table { }
-.emp-table view[style*="display:table-row"]:nth-child(even) { background: #f8f9fc; }
+.table-info { font-size: 14px; color: #606266; }
+.task-list { display: flex; flex-direction: column; gap: 12px; margin-top: 12px; }
+.product-card { background: #fff; border: 1px solid #d0d5dd; border-radius: 12px; padding: 16px; }
+.product-card-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
+.product-name { flex: 1; font-size: 18px; font-weight: 700; line-height: 1.4; }
+.allocation-text { display: block; margin-top: 10px; color: #667085; font-size: 16px; }
+.report-form, .locked-result { margin-top: 16px; padding-top: 14px; border-top: 1px solid #eaecf0; }
+.field-label { display: block; margin-bottom: 8px; font-weight: 600; }
+.qty-input { width: 100%; min-height: 48px; padding: 10px 12px; border: 1px solid #98a2b3; border-radius: 8px; background: #fff; font-size: 20px; line-height: 1.4; }
+.qty-input:focus { border-color: #07c160; outline: none; }
+.field-help { display: block; margin-top: 8px; color: #667085; font-size: 14px; }
+.field-error { display: block; margin-top: 8px; color: #c4320a; font-size: 14px; }
+.submit-button { width: 100%; min-height: 48px; margin-top: 16px; border-color: #07c160; background: #07c160; border-radius: 8px; font-size: 17px; font-weight: 600; }
+.submit-button[disabled] { border-color: #95d5a9; background: #95d5a9; }
+.reported-text { display: block; color: #16803c; font-size: 18px; font-weight: 700; }
+.locked-text { display: block; margin-top: 8px; color: #667085; font-size: 14px; }
 
-.qty-input { -moz-appearance: textfield; }
-.qty-input::-webkit-inner-spin-button,
-.qty-input::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
-
-.tag { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 11px; }
-.tag-success { background: #f0f9eb; color: #67c23a; }
-.tag-warning { background: #fdf6ec; color: #e6a23c; }
+.tag { display: inline-block; padding: 4px 8px; border-radius: 10px; font-size: 14px; white-space: nowrap; }
+.tag-success { background: #ecfdf3; color: #16803c; }
+.tag-warning { background: #fffaeb; color: #b54708; }
 .tag-default { background: #f0f2f5; color: #909399; }
 
 .save-toast { border: 1px solid; }

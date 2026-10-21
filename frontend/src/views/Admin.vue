@@ -103,16 +103,29 @@
               <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
                 <strong>货品列表</strong>
                 <div>
-                  <button class="btn btn-sm" @click="insertRow" style="margin-right: 12px; border-color: #67c23a; color: #67c23a; font-weight: 600;">+ 插入行</button>
-                  <button class="btn btn-primary" @click="saveAllAssignments">一键提交所有分货</button>
+                  <button class="btn btn-primary" @click="saveAllAssignments" :disabled="hasAllocationErrors">保存分货</button>
                 </div>
               </div>
+              <div class="matrix-filters">
+                <label>产品搜索<input v-model.trim="itemSearch" type="search" placeholder="输入产品简称" /></label>
+                <label>状态筛选
+                  <select v-model="itemStatusFilter">
+                    <option value="all">全部</option>
+                    <option value="over">分货超量</option>
+                    <option value="pending">待报货</option>
+                    <option value="done">已完成</option>
+                    <option value="unallocated">未分货</option>
+                  </select>
+                </label>
+              </div>
               <div v-if="items.length === 0" class="empty-hint">暂无货品</div>
+              <div v-else-if="filteredItems.length === 0" class="empty-hint">没有符合条件的产品</div>
               <div v-else class="matrix-table-wrap">
                 <table class="matrix-table">
                   <thead>
                     <tr>
                       <th class="col-name">货品名称</th>
+                      <th class="col-total">公司到货</th>
                       <th v-for="emp in matrixEmployees" :key="emp.id" class="col-emp" colspan="2">
                         <div class="emp-header-name">{{ emp.name }}</div>
                         <div class="emp-header-sub"><span class="sum-sub-alloc col-type-alloc">分货</span><span
@@ -120,16 +133,20 @@
                       </th>
                       <th class="col-total col-type-alloc">总分货</th>
                       <th class="col-total col-type-actual">总报货</th>
+                      <th class="col-total">剩余</th>
                       <th class="col-status">状态</th>
                       <th class="col-remark">备注</th>
                       <th class="col-actions">操作</th>
                     </tr>
                   </thead>
                   <tbody>
-                    <tr v-for="item in items" :key="item.id">
+                    <tr v-for="item in filteredItems" :key="item.id" :class="{ 'allocation-error-row': getItemRemaining(item) < 0 || !isCompanyQuantityValid(item) }">
                       <td class="item-name-cell">
                         <input v-if="item.isTemp" type="text" v-model="item.name" placeholder="货品名称" class="name-input" />
                         <strong v-else @click="showItemDetail(item)">{{ item.name }}</strong>
+                      </td>
+                      <td class="cell-qty-alloc">
+                        <input type="text" v-model="item.company_quantity" inputmode="decimal" class="cell-input" aria-label="公司到货量" />
                       </td>
                       <template v-for="emp in matrixEmployees" :key="emp.id">
                         <td class="cell-qty-alloc col-type-alloc">
@@ -145,12 +162,14 @@
                       </template>
                       <td class="cell-total col-type-alloc">{{ getItemTotal(item) }}</td>
                       <td class="cell-total cell-total-actual col-type-actual">{{ getItemActualTotal(item) }}</td>
+                      <td class="cell-total" :class="{ 'quantity-error': getItemRemaining(item) < 0 }">{{ getItemRemaining(item) }}</td>
                       <td><span
-                          :class="'status-badge ' + (item.status === '未分配' ? 'status-pending' : item.status === '未报货' ? 'status-warn' : 'status-ok')">{{
+                          :class="'status-badge ' + (item.status === '未分货' ? 'status-pending' : item.status === '待报货' ? 'status-warn' : 'status-ok')">{{
                           item.status }}</span></td>
                       <td class="cell-remark">{{ item.remark || '无备注' }}</td>
                       <td>
                         <div class="action-group">
+                        <button class="btn btn-xs" @click="showItemDetail(item)">分货</button>
                         <button class="btn btn-xs btn-primary" @click="startEdit(item)" style="margin-right: 4px;">修改</button>
                           <button class="btn btn-xs btn-danger" @click="deleteItem(item)" title="删除此货物">删除</button>
                         </div>
@@ -160,12 +179,14 @@
                   <tfoot v-if="items.length > 1">
                     <tr>
                       <td><strong>合计</strong></td>
+                      <td class="cell-total">{{ getCompanyGrandTotal() }}</td>
                       <template v-for="emp in matrixEmployees" :key="emp.id">
                         <td class="cell-total col-type-alloc">{{ getColumnTotal(emp.id) }}</td>
                         <td class="cell-total cell-total-actual col-type-actual">{{ getMatrixColumnActualTotal(emp.id) }}</td>
                       </template>
                       <td class="cell-total col-type-alloc">{{ getGrandTotal() }}</td>
                       <td class="cell-total cell-total-actual col-type-actual">{{ getMatrixGrandActualTotal() }}</td>
+                      <td class="cell-total">{{ getRemainingGrandTotal() }}</td>
                       <td></td>
                       <td></td>
                     </tr>
@@ -338,6 +359,7 @@
               <tr>
                 <th class="sum-col-idx">序号</th>
                 <th class="sum-col-name">货品名称</th>
+                <th class="sum-col-total">公司到货</th>
                 <th v-for="emp in summaryEmployees" :key="emp.id" class="sum-col-emp" colspan="2">
                   <div class="sum-emp-name">{{ emp.name }}</div>
                   <div class="sum-emp-sub">
@@ -348,30 +370,35 @@
                 </th>
                 <th class="sum-col-total">总分货</th>
                 <th class="sum-col-total">总报货</th>
+                <th class="sum-col-total">剩余</th>
               </tr>
             </thead>
             <tbody>
               <tr v-for="(d, idx) in summaryData.details" :key="d.item_name">
                 <td class="sum-idx">{{ idx + 1 }}</td>
                 <td class="sum-name">{{ d.item_name }}</td>
+                <td class="sum-total">{{ d.company_quantity }}</td>
                 <template v-for="emp in summaryEmployees" :key="emp.id">
                   <td class="sum-cell sum-cell-alloc">{{ getAlloc(d, emp.id) }}</td>
                   <td class="sum-cell sum-cell-actual">{{ getActual(d, emp.id) }}</td>
                 </template>
-                <td class="sum-total sum-total-alloc">{{ getAllocTotal(d) }}</td>
+                <td class="sum-total sum-total-alloc">{{ d.total_allocated }}</td>
                 <td class="sum-total sum-total-actual">{{ d.total_actual ?? '-' }}</td>
+                <td class="sum-total">{{ d.remaining_quantity }}</td>
               </tr>
             </tbody>
             <tfoot>
               <tr>
                 <td></td>
                 <td style="text-align:center;font-weight:600;padding:8px 10px">合计</td>
+                <td class="sum-total">{{ summaryData.totals.company_quantity }}</td>
                 <template v-for="emp in summaryEmployees" :key="emp.id">
-                  <td class="sum-total sum-total-alloc">{{ getColumnAllocTotal(emp.id) }}</td>
-                  <td class="sum-total sum-total-actual">{{ getColumnActualTotal(emp.id) }}</td>
+                  <td class="sum-total sum-total-alloc">{{ emp.allocated_quantity }}</td>
+                  <td class="sum-total sum-total-actual">{{ emp.actual_quantity }}</td>
                 </template>
-                <td class="sum-total sum-total-alloc">{{ getGrandAllocTotal() }}</td>
-                <td class="sum-total sum-total-actual">{{ getGrandActualTotal() }}</td>
+                <td class="sum-total sum-total-alloc">{{ summaryData.totals.allocated_quantity }}</td>
+                <td class="sum-total sum-total-actual">{{ summaryData.totals.actual_quantity }}</td>
+                <td class="sum-total">{{ summaryData.totals.remaining_quantity }}</td>
               </tr>
             </tfoot>
           </table>
@@ -425,11 +452,11 @@
         <div style="display:flex; gap:16px; flex-wrap:wrap;">
           <div style="flex:1; min-width:200px;">
             <div class="form-group">
-              <label>报货日期 <span style="color:red">*</span></label>
-              <input type="date" v-model="batchForm.batch_date" />
+              <label>正式批次名称 <span style="color:red">*</span></label>
+              <input v-model="batchForm.name" placeholder="请确认正式批次名称" />
             </div>
             <div class="form-group">
-              <label>到货时间</label>
+              <label>到货日期 <span style="color:red">*</span></label>
               <input type="date" v-model="batchForm.arrival_time" />
             </div>
             <div class="form-group">
@@ -438,31 +465,41 @@
             </div>
             
             <div v-if="!editingBatchId" class="form-group" style="margin-top:20px; padding-top:16px; border-top:1px dashed #ddd;">
-              <label style="color:#409eff; font-weight:bold;">批量导入分单 (可选)</label>
-              <p style="font-size:12px; color:#888; margin-bottom:8px;">请上传包含货品和人员分货数量的 Excel 文件 (.xlsx, .xls)</p>
+              <label style="color:#409eff; font-weight:bold;">Excel 导入（优先）</label>
+              <p style="font-size:12px; color:#667085; margin-bottom:8px;">仅读取“原始导入表”的 A1 批次参考名称、A 列产品简称和 B 列曲周到货量；不会匹配员工或产品资料库。</p>
               <input type="file" accept=".xlsx, .xls" @change="handleFileUpload" style="padding: 4px;" />
+              <p v-if="importErrors.length" class="form-error">发现 {{ importErrors.length }} 处 Excel 错误，请逐项修正后重新选择文件。</p>
+              <table v-if="importErrors.length" class="data-table" style="font-size:12px;margin-top:8px">
+                <thead><tr><th>工作表</th><th>单元格</th><th>原值</th><th>原因</th></tr></thead>
+                <tbody><tr v-for="(error, index) in importErrors" :key="index"><td>{{ error.sheet || '-' }}</td><td>{{ error.cell || '-' }}</td><td>{{ error.value || '-' }}</td><td>{{ error.reason }}</td></tr></tbody>
+              </table>
+
+              <template v-if="!importFile && !importErrors.length">
+                <p style="font-size:12px;color:#667085;margin:12px 0 6px">不导入时，请从产品资料库选择产品并填写每项公司到货量。</p>
+                <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+                  <select v-model="selectedCargoTypeId" style="min-width:200px"><option value="">选择产品</option><option v-for="cargo in cargoTypes.filter(c => c.is_active)" :key="cargo.id" :value="String(cargo.id)">{{ cargo.name }}{{ cargo.default_unit ? '（' + cargo.default_unit + '）' : '' }}</option></select>
+                  <button type="button" class="btn btn-sm" @click="addManualItem">加入产品</button>
+                </div>
+                <div v-for="(item, index) in manualItems" :key="item.cargo_type_id" style="display:flex;gap:8px;margin-top:8px;align-items:center">
+                  <span style="flex:1">{{ item.name }}{{ item.unit ? '（' + item.unit + '）' : '' }}</span>
+                  <input v-model="item.company_quantity" inputmode="decimal" placeholder="公司到货量" style="width:120px" />
+                  <button type="button" class="btn btn-xs btn-danger" @click="manualItems.splice(index, 1)">移除</button>
+                </div>
+              </template>
             </div>
           </div>
 
           <div v-if="parsedExcelData.length > 0 && !editingBatchId" style="flex: 2; border-left: 1px solid #eee; padding-left:16px; max-height: 400px; overflow-y:auto;">
             <h4 style="margin-bottom: 8px; color: #67c23a;">数据预览 (共 {{ parsedExcelData.length }} 条)</h4>
-            <div v-if="unmatchedEmployees.length > 0" style="background:#fef0f0; color:#f56c6c; padding:8px; border-radius:4px; font-size:12px; margin-bottom:10px;">
-              <strong>注意：</strong> Excel中的列名 <b>{{ unmatchedEmployees.join(', ') }}</b> 未能在系统中匹配到对应员工，该列数据将被忽略。
-            </div>
            <table class="data-table" style="font-size:12px;">
               <thead>
                 <tr>
-                  <th>货品名称</th>
-                  <th v-for="emp in matchedEmployees" :key="emp.id">{{ emp.name }}</th>
+                  <th>产品简称</th><th>公司到货量（曲周）</th>
                 </tr>
               </thead>
               <tbody>
                 <tr v-for="(item, i) in parsedExcelData" :key="i">
-                  <td style="font-weight:bold;">{{ item.name }}</td>
-                  <td v-for="emp in matchedEmployees" :key="emp.id">
-                    <span style="color:#e6a23c">分: {{ getPreviewQty(item, emp.id) }}</span> / 
-                    <span style="color:#67c23a">报: {{ getPreviewActualQty(item, emp.id) }}</span>
-                  </td>
+                  <td style="font-weight:bold;">{{ item.name }}</td><td>{{ item.company_quantity }}</td>
                 </tr>
               </tbody>
             </table>
@@ -475,8 +512,8 @@
 
         <div class="modal-actions" v-if="!isImporting">
           <button class="btn" @click="closeBatchForm">取消</button>
-          <button class="btn btn-primary" @click="editingBatchId ? updateBatch() : createBatchWithImport()" :disabled="!batchForm.batch_date">
-            {{ editingBatchId ? '保存修改' : (parsedExcelData.length ? '一键建批次并导入' : '创建批次') }}
+          <button class="btn btn-primary" @click="editingBatchId ? updateBatch() : createBatchWithImport()" :disabled="!batchForm.name || !batchForm.arrival_time || isImporting || importErrors.length">
+            {{ editingBatchId ? '保存修改' : (importFile ? '确认创建导入批次' : '创建手动批次') }}
           </button>
         </div>
         <p v-if="batchMsg" :style="batchMsgOk ? 'color:#67c23a; margin-top:10px;' : 'color:#f56c6c; margin-top:10px;'">{{ batchMsg }}</p>
@@ -494,7 +531,7 @@
           <span>规格: {{ itemDetailView.spec || '无' }}</span>
           <span>备注: {{ itemDetailView.remark || '无' }}</span>
           <span
-            :class="'status-badge ' + (itemDetailView.status === '未分配' ? 'status-pending' : itemDetailView.status === '未报货' ? 'status-warn' : 'status-ok')">{{
+            :class="'status-badge ' + (itemDetailView.status === '未分货' ? 'status-pending' : itemDetailView.status === '待报货' ? 'status-warn' : 'status-ok')">{{
               itemDetailView.status }}</span>
         </div>
         <div v-if="employees && employees.length" class="mobile-assign-list">
@@ -526,6 +563,10 @@
             <span style="color:#67c23a">报货: {{ getItemActualTotal(itemDetailView) }}</span>
           </div>
         </div>
+        <div class="modal-actions">
+          <button class="btn" @click="itemDetailView = null">取消</button>
+          <button class="btn btn-primary" @click="saveAllAssignments" :disabled="hasAllocationErrors">保存分货</button>
+        </div>
       </div>
   
     </div>
@@ -550,7 +591,6 @@
 </template>
 
 <script>
-import * as XLSX from 'xlsx';
 
 const API = "/api"
 
@@ -566,7 +606,11 @@ async function parseApiResponse(response) {
     localStorage.removeItem("user")
     window.location.hash = "#/login"
   }
-  if (!response.ok) throw new Error(data.error || response.statusText || "请求失败")
+  if (!response.ok) {
+    const error = new Error(data.error || response.statusText || "请求失败")
+    error.errors = data.errors || []
+    throw error
+  }
   return data
 }
 
@@ -579,6 +623,14 @@ async function apiPost(url, body) {
     method: "POST",
     headers: authHeaders({ "Content-Type": "application/json" }),
     body: JSON.stringify(body)
+  }));
+}
+
+async function apiUpload(url, formData) {
+  return parseApiResponse(await fetch(url, {
+    method: "POST",
+    headers: authHeaders(),
+    body: formData
   }));
 }
 
@@ -622,7 +674,7 @@ export default {
       cargoMsgError: false, empMsgError: false, unitMsgError: false,
       showBatchForm: false,
       editingBatchId: null,
-      batchForm: { name: "", arrival_time: "", batch_remark: "", batch_date: new Date().toISOString().slice(0, 10) },
+      batchForm: { name: "", arrival_time: new Date().toISOString().slice(0, 10), batch_remark: "" },
       batchMsg: "", batchMsgOk: false,
       showItemForm: false,
       itemForm: { name: "", spec: "", unit: "", remark: "" },
@@ -632,12 +684,18 @@ export default {
       assignMsg: "",
       sidebarOpen: false,
       employeeSearch: "",
+      itemSearch: "",
+      itemStatusFilter: "all",
       summaryData: null,
       summaryBatchId: null,
       itemDetailView: null,
       mobileItemId: null,
 
       parsedExcelData: [],
+      importFile: null,
+      importErrors: [],
+      manualItems: [],
+      selectedCargoTypeId: "",
       matchedEmployees: [],
       unmatchedEmployees: [],
       isImporting: false,
@@ -653,7 +711,7 @@ export default {
       const totalItems = latestBatch ? (latestBatch.item_count || 0) : 0
       let pendingItems = 0, doneItems = 0
       for (const item of this.items) {
-        if (item.status === "未报货") pendingItems++
+        if (item.status === "待报货") pendingItems++
         else if (item.status === "已完成") doneItems++
       }
       return { totalBatches, totalItems, pendingItems, doneItems, latestBatchName: latestBatch ? latestBatch.name : '' }
@@ -665,9 +723,13 @@ export default {
         .map(e => ({ id: e.id, name: e.display_name || e.name }))
     },
     summaryEmployees() {
-      if (!this.employees || !this.employees.length) return []
-      return this.employees.filter(e => e.role === 'employee')
-        .map(e => ({ id: e.id, name: e.display_name || e.name }))
+      if (!this.summaryData?.employee_totals) return []
+      return this.summaryData.employee_totals.map(employee => ({
+        id: employee.user_id,
+        name: employee.user_name,
+        allocated_quantity: employee.allocated_quantity,
+        actual_quantity: employee.actual_quantity,
+      }))
     },
     activeUnitTypes() {
       return this.unitTypes.filter(unit => unit.is_active)
@@ -678,6 +740,20 @@ export default {
         const db = b.arrival_time || ''
         return db.localeCompare(da) || (b.id - a.id)
       })
+    },
+    filteredItems() {
+      const keyword = this.itemSearch.toLowerCase()
+      return this.items.filter(item => {
+        if (keyword && !String(item.name || "").toLowerCase().includes(keyword)) return false
+        if (this.itemStatusFilter === "over") return this.getItemRemaining(item) < 0
+        if (this.itemStatusFilter === "pending") return item.status === "待报货"
+        if (this.itemStatusFilter === "done") return item.status === "已完成"
+        if (this.itemStatusFilter === "unallocated") return item.status === "未分货"
+        return true
+      })
+    },
+    hasAllocationErrors() {
+      return this.items.some(item => this.getItemRemaining(item) < 0 || !this.isCompanyQuantityValid(item))
     }
   },
   async mounted() {
@@ -778,15 +854,23 @@ export default {
       this.parsedExcelData = [];
       this.matchedEmployees = [];
       this.unmatchedEmployees = [];
+      this.importFile = null;
+      this.importErrors = [];
+      this.manualItems = [];
+      this.selectedCargoTypeId = "";
     },
 
     showBatchFormForCreate() {
       this.editingBatchId = null
-      this.batchForm = { name: "", arrival_time: "", batch_remark: "", batch_date: new Date().toISOString().slice(0, 10) }
+      this.batchForm = { name: "", arrival_time: new Date().toISOString().slice(0, 10), batch_remark: "" }
       this.batchMsg = ""
       this.parsedExcelData = [];
       this.matchedEmployees = [];
       this.unmatchedEmployees = [];
+      this.importFile = null;
+      this.importErrors = [];
+      this.manualItems = [];
+      this.selectedCargoTypeId = "";
       this.showBatchForm = true
     },
     editBatch(b) {
@@ -795,11 +879,26 @@ export default {
       this.batchForm = {
         name: b.name || "",
         arrival_time: b.arrival_time || "",
-        batch_remark: b.batch_remark || "",
-        batch_date: dateStr || new Date().toISOString().slice(0, 10)
+        batch_remark: b.batch_remark || ""
       }
       this.batchMsg = ""
       this.showBatchForm = true
+    },
+    addManualItem() {
+      const cargoType = this.cargoTypes.find(c => c.id === Number(this.selectedCargoTypeId) && c.is_active)
+      if (!cargoType) return
+      if (this.manualItems.some(item => item.cargo_type_id === cargoType.id)) {
+        this.batchMsg = "同一产品不能重复选择";
+        this.batchMsgOk = false;
+        return
+      }
+      this.manualItems.push({
+        cargo_type_id: cargoType.id,
+        name: cargoType.name,
+        unit: cargoType.default_unit || "",
+        company_quantity: "",
+      })
+      this.selectedCargoTypeId = ""
     },
     getPreviewQty(item, empId) {
       const assign = item.assignments.find(a => a.user_id === empId);
@@ -812,85 +911,22 @@ export default {
     handleFileUpload(event) {
       const file = event.target.files[0];
       if (!file) return;
-
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        const data = new Uint8Array(e.target.result);
-        const workbook = XLSX.read(data, { type: 'array' });
-        const firstSheetName = workbook.SheetNames[0];
-        const worksheet = workbook.Sheets[firstSheetName];
-        
-        const jsonArr = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
-        
-        if (jsonArr.length < 2) {
-          alert("Excel文件内容太少或格式不正确");
-          return;
-        }
-
-        const headers = jsonArr[0];
-        
-        let itemNameColIdx = -1;
-        for (let i = 0; i < headers.length; i++) {
-          if (headers[i] && String(headers[i]).trim() === '货品名称') {
-            itemNameColIdx = i;
-            break;
-          }
-        }
-        if (itemNameColIdx === -1) itemNameColIdx = 0;
-
-        this.matchedEmployees = [];
-        this.unmatchedEmployees = [];
-        const empColumnMap = {}; 
-
-        for (let colIdx = 0; colIdx < headers.length; colIdx++) {
-          if (colIdx === itemNameColIdx) continue; 
-          
-          let colName = headers[colIdx];
-          if (!colName) continue;
-          colName = String(colName).trim();
-          
-          const excludeColumns = ['序号', '规格', '单位', '备注', '总计', '合计', '预计到货数量', '总报货', '剩余数量', '总分货数', '货品名称'];
-          if (excludeColumns.includes(colName)) continue;
-
-          const matched = this.employees.find(e => {
-            const name = (e.display_name || e.name || "").trim();
-            return name && colName.includes(name);
-          });
-
-          if (matched) {
-            empColumnMap[colIdx] = matched.id;
-            this.matchedEmployees.push({ id: matched.id, name: matched.display_name || matched.name });
-          } else {
-            this.unmatchedEmployees.push(colName);
-          }
-        }
-
-        const parsedItems = [];
-        for (let rowIdx = 1; rowIdx < jsonArr.length; rowIdx++) {
-          const row = jsonArr[rowIdx];
-          
-          const itemName = row[itemNameColIdx]; 
-          
-          if (!itemName || String(itemName).trim() === "") continue;
-
-          const assignments = [];
-          for (let colIdx in empColumnMap) {
-            let qty = row[colIdx];
-            if (qty !== undefined && qty !== null && qty !== '' && String(qty).trim() !== '-') {
-              // 🔥 修改 1：同时将该数量赋值给分货(allocated_quantity) 和报货(actual_quantity)
-              assignments.push({
-                user_id: empColumnMap[colIdx],
-                allocated_quantity: Number(qty) || 0,
-                actual_quantity: Number(qty) || 0 
-              });
-            }
-          }
-          parsedItems.push({ name: String(itemName).trim(), assignments });
-        }
-        
-        this.parsedExcelData = parsedItems;
-      };
-      reader.readAsArrayBuffer(file);
+      this.importFile = file;
+      this.importErrors = [];
+      this.parsedExcelData = [];
+      const form = new FormData();
+      form.append("file", file);
+      apiUpload(API + "/batches/import/validate", form)
+        .then(data => {
+          this.parsedExcelData = data.items || [];
+          if (!this.batchForm.name) this.batchForm.name = data.reference_name || "";
+        })
+        .catch(error => {
+          this.importFile = null;
+          this.importErrors = error.errors || [{ reason: error.message || "Excel 校验失败" }];
+          this.batchMsg = "Excel 校验失败，请查看全部错误后重新选择文件。";
+          this.batchMsgOk = false;
+        });
     },
 
     getPreviewQty(item, empId) {
@@ -901,55 +937,30 @@ export default {
     async createBatchWithImport() {
       try {
         this.batchMsg = "";
-        
-        const dateStr = this.batchForm.batch_date || new Date().toISOString().slice(0, 10);
-        const parts = dateStr.split("-");
-        const month = parseInt(parts[1]);
-        const day = parseInt(parts[2]);
-        this.batchForm.name = month + "月" + day + "日报货";
-        
-        if (this.parsedExcelData.length === 0) {
-          await apiPost(API + "/batches", this.batchForm);
-          this.batchMsg = "创建成功!";
-          this.batchMsgOk = true;
-          this.closeBatchForm();
-          await this.loadBatches();
-          return;
-        }
-
         this.isImporting = true;
-        this.importProgress = 0;
-
-        const createdBatch = await apiPost(API + "/batches", this.batchForm);
-        let targetBatchId = createdBatch.id; 
-        if (!targetBatchId) {
-           await this.loadBatches();
-           targetBatchId = this.sortedBatches[0].id; 
-        }
-
-        for (let i = 0; i < this.parsedExcelData.length; i++) {
-          const rowData = this.parsedExcelData[i];
-          
-          const foundType = this.cargoTypes.find(c => c.name === rowData.name);
-          const itemUnit = foundType && foundType.default_unit ? foundType.default_unit : '个';
-          
-          const createdItem = await apiPost(API + "/batches/" + targetBatchId + "/items", { 
-             name: rowData.name, 
-             spec: "", 
-             unit: itemUnit, 
-             remark: "Excel批量导入" 
+        let createdBatch;
+        if (this.importFile) {
+          const form = new FormData();
+          form.append("file", this.importFile);
+          form.append("name", this.batchForm.name);
+          form.append("arrival_time", this.batchForm.arrival_time);
+          form.append("batch_remark", this.batchForm.batch_remark || "");
+          createdBatch = await apiUpload(API + "/batches/import", form);
+        } else {
+          createdBatch = await apiPost(API + "/batches", {
+            name: this.batchForm.name,
+            arrival_time: this.batchForm.arrival_time,
+            batch_remark: this.batchForm.batch_remark || "",
+            source_type: "manual",
+            items: this.manualItems.map(item => ({
+              cargo_type_id: item.cargo_type_id,
+              company_quantity: item.company_quantity,
+            })),
           });
-
-          if (rowData.assignments.length > 0 && createdItem.id) {
-            await apiPut(API + "/items/" + createdItem.id + "/assignments", rowData.assignments);
-          }
-          
-          this.importProgress = i + 1;
         }
-
-        this.batchMsg = "批次创建与数据导入全部成功!";
+        const targetBatchId = createdBatch.id;
+        this.batchMsg = "批次创建成功！";
         this.batchMsgOk = true;
-        
         setTimeout(async () => {
           this.isImporting = false;
           this.closeBatchForm();
@@ -968,17 +979,8 @@ export default {
     async updateBatch() {
       try {
         this.batchMsg = ""
-        var nameVal = this.batchForm.name || ""
-        if (this.batchForm.batch_date) {
-          var parts = this.batchForm.batch_date.split("-")
-          if (parts.length === 3) {
-            var month = parseInt(parts[1])
-            var day = parseInt(parts[2])
-            nameVal = month + "月" + day + "日报货"
-          }
-        }
         const payload = {
-          name: nameVal,
+          name: this.batchForm.name || "",
           arrival_time: this.batchForm.arrival_time || "",
           batch_remark: this.batchForm.batch_remark || ""
         }
@@ -1039,54 +1041,31 @@ export default {
       if (existingAssign) {
         existingAssign.allocated_quantity = val;
       } else {
-        item.assignments.push({ user_id: userId, allocated_quantity: val, actual_quantity: "-" });
+        item.assignments.push({ user_id: userId, allocated_quantity: val });
       }
 
       if (item.status === "未分货" && val !== "-" && Number(val) > 0) {
-        item.status = "未报货";
+        item.status = "待报货";
       }
     },
 
     async saveAllAssignments() {
+      if (this.hasAllocationErrors) {
+        alert("请先修正公司到货量或超量分货：总分货不能大于公司到货量。");
+        return;
+      }
       try {
-        const tempItems = this.items.filter(i => i.isTemp);
-        for (let tItem of tempItems) {
-          if (!tItem.name || !tItem.name.trim()) {
-            alert("有新增货品的名称为空，请填写完整后再提交！");
-            return;
-          }
-          
-          const foundType = this.cargoTypes.find(c => c.name === tItem.name.trim());
-          const itemUnit = foundType && foundType.default_unit ? foundType.default_unit : '个';
-          
-          const createdItem = await apiPost(API + "/batches/" + this.selectedBatchId + "/items", {
-            name: tItem.name.trim(),
-            spec: "",
-            unit: itemUnit, 
-            remark: tItem.remark || ""
-          });
-          tItem.id = createdItem.id;
-          tItem.isTemp = false;
-        }
-
         const promises = this.items.map(item => {
-          if (!item.assignments || item.assignments.length === 0) return Promise.resolve();
-          
-          let assignmentsPayload = item.assignments
+          const assignmentsPayload = (item.assignments || [])
             .filter(a => a.allocated_quantity !== '-' && a.allocated_quantity !== null && a.allocated_quantity !== "")
-            .map(a => {
-              // 🔥 修改 2：一键保存时，确保实际报货数量 (actual_quantity) 也不丢失，一起发送给后端
-              let payload = {
+            .map(a => ({
                 user_id: a.user_id,
                 allocated_quantity: Number(a.allocated_quantity)
-              };
-              if (a.actual_quantity !== undefined && a.actual_quantity !== '-' && a.actual_quantity !== null && a.actual_quantity !== "") {
-                payload.actual_quantity = Number(a.actual_quantity);
-              }
-              return payload;
-            });
-            
-          return apiPut(API + "/items/" + item.id + "/assignments", assignmentsPayload);
+            }));
+          return apiPut(API + "/items/" + item.id + "/assignments", {
+            company_quantity: Number(item.company_quantity),
+            assignments: assignmentsPayload,
+          });
         });
         
         await Promise.all(promises);
@@ -1134,6 +1113,27 @@ export default {
         }
       });
       return hasVal ? sum : '-';
+    },
+    isCompanyQuantityValid(item) {
+      const value = String(item.company_quantity ?? "").trim();
+      if (!value) return false;
+      const number = Number(value);
+      return Number.isFinite(number) && number >= 0 && Math.round(number * 10) === number * 10;
+    },
+    getItemRemaining(item) {
+      if (!this.isCompanyQuantityValid(item)) return '-';
+      const allocated = this.getItemTotal(item);
+      const total = allocated === '-' ? 0 : Number(allocated);
+      return Math.round((Number(item.company_quantity) - total) * 10) / 10;
+    },
+    getCompanyGrandTotal() {
+      return this.items.reduce((total, item) => total + (this.isCompanyQuantityValid(item) ? Number(item.company_quantity) : 0), 0);
+    },
+    getRemainingGrandTotal() {
+      return this.items.reduce((total, item) => {
+        const remaining = this.getItemRemaining(item);
+        return total + (remaining === '-' ? 0 : Number(remaining));
+      }, 0);
     },
     getColumnTotal(userId) {
       let sum = 0, hasVal = false;
@@ -1205,17 +1205,10 @@ export default {
       this.assignmentForm.splice(idx, 1)
     },
     
-    // 🔥 修改处 3：针对旧弹窗如果还用到的话，也补上对 actual_quantity 的保留
     async saveAssignment() {
       const payload = this.assignmentForm
         .filter(a => a.user_id && a.allocated_quantity !== '-' && a.allocated_quantity !== '')
-        .map(a => {
-           let pl = { user_id: Number(a.user_id), allocated_quantity: Number(a.allocated_quantity) || 0 };
-           if(a.actual_quantity !== undefined && a.actual_quantity !== '-' && a.actual_quantity !== null && a.actual_quantity !== "") {
-              pl.actual_quantity = Number(a.actual_quantity);
-           }
-           return pl;
-        });
+        .map(a => ({ user_id: Number(a.user_id), allocated_quantity: Number(a.allocated_quantity) || 0 }));
       await apiPut(API + "/items/" + this.assignItem.id + "/assignments", payload)
       this.assignMsg = "保存成功!"
       await this.loadItems(this.selectedBatchId)
@@ -1966,6 +1959,30 @@ body {
   border-color: #409eff;
 }
 
+.matrix-filters {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+}
+
+.matrix-filters label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.matrix-filters input,
+.matrix-filters select {
+  min-height: 36px;
+  padding: 6px 10px;
+  border: 1px solid #d0d5dd;
+  border-radius: 6px;
+  background: #fff;
+}
+
 .matrix-table .col-type-alloc {
   background-color: #fff8e1 !important;
 }
@@ -1980,6 +1997,15 @@ body {
 
 .matrix-table th.col-type-actual {
   background-color: #c8e6c9 !important;
+}
+
+.matrix-table .allocation-error-row td {
+  background-color: #fff1f0 !important;
+}
+
+.quantity-error {
+  color: #c4320a;
+  font-weight: 700;
 }
 
 .matrix-table-wrap {
@@ -2345,6 +2371,18 @@ body {
 }
 
 @media (max-width: 768px) {
+  .matrix-filters,
+  .matrix-filters label {
+    align-items: stretch;
+    flex-direction: column;
+    width: 100%;
+  }
+
+  .matrix-filters input,
+  .matrix-filters select {
+    width: 100%;
+    min-height: 44px;
+  }
   .sidebar {
     position: fixed;
     z-index: 1000;

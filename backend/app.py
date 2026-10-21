@@ -8,12 +8,14 @@ import time
 import uuid
 import hashlib
 import secrets
+from io import BytesIO
 from functools import wraps
 from decimal import Decimal, InvalidOperation
 from datetime import date, datetime, timedelta, timezone
 from flask import Flask, request, jsonify, g
 from flask_cors import CORS
 from flask_sqlalchemy import SQLAlchemy
+from openpyxl import load_workbook
 from werkzeug.security import generate_password_hash, check_password_hash
 from dotenv import load_dotenv
 
@@ -309,6 +311,99 @@ def parse_quantity(value, *, allow_zero=True):
     if quantity < 0 or (not allow_zero and quantity == 0):
         raise ValueError("数量必须大于 0" if not allow_zero else "数量不能小于 0")
     return quantity
+
+
+def import_cell_error(sheet, cell, value, reason):
+    """统一 Excel 校验错误结构，前端可一次性完整展示。"""
+    return {
+        "sheet": sheet,
+        "cell": cell,
+        "value": "" if value is None else str(value),
+        "reason": reason,
+    }
+
+
+def parse_import_workbook(file_storage):
+    """解析已审核的原始导入表；只返回临时数据，绝不在本函数写库。"""
+    if not file_storage or not file_storage.filename:
+        return None, [import_cell_error("", "", "", "请选择 Excel 文件")]
+    try:
+        workbook = load_workbook(BytesIO(file_storage.read()), data_only=True, read_only=True)
+    except Exception:
+        return None, [import_cell_error("", "", "", "无法读取 Excel 文件")]
+
+    if workbook.sheetnames != ["原始导入表"]:
+        return None, [import_cell_error(
+            ", ".join(workbook.sheetnames), "工作表", "", "Excel 必须且只能包含名为“原始导入表”的工作表"
+        )]
+
+    worksheet = workbook["原始导入表"]
+    errors = []
+    reference_name = worksheet["A1"].value
+    if reference_name is None or not str(reference_name).strip():
+        errors.append(import_cell_error(worksheet.title, "A1", reference_name, "批次参考名称不能为空"))
+    if worksheet["A2"].value != "产品简称":
+        errors.append(import_cell_error(worksheet.title, "A2", worksheet["A2"].value, "表头必须为“产品简称”"))
+    if worksheet["B2"].value != "曲周":
+        errors.append(import_cell_error(worksheet.title, "B2", worksheet["B2"].value, "表头必须为“曲周”"))
+
+    items = []
+    names = set()
+    has_data_row = False
+    for row in range(3, worksheet.max_row + 1):
+        raw_name = worksheet.cell(row, 1).value
+        raw_quantity = worksheet.cell(row, 2).value
+        if raw_name is None and raw_quantity is None:
+            continue
+        has_data_row = True
+        name = str(raw_name).strip() if raw_name is not None else ""
+        if not name:
+            errors.append(import_cell_error(worksheet.title, f"A{row}", raw_name, "产品简称不能为空"))
+        elif name in names:
+            errors.append(import_cell_error(worksheet.title, f"A{row}", raw_name, "当前文件内产品简称重复"))
+        else:
+            names.add(name)
+        if raw_quantity is None or str(raw_quantity).strip() == "":
+            errors.append(import_cell_error(worksheet.title, f"B{row}", raw_quantity, "公司到货数量不能为空"))
+            continue
+        try:
+            quantity = parse_quantity(raw_quantity, allow_zero=True)
+        except ValueError as exc:
+            errors.append(import_cell_error(worksheet.title, f"B{row}", raw_quantity, str(exc)))
+            continue
+        if name:
+            items.append({"name": name, "company_quantity": quantity})
+
+    if not has_data_row:
+        errors.append(import_cell_error(worksheet.title, "A3:B3", "", "至少需要一行产品数据"))
+    if errors:
+        return None, errors
+    return {"reference_name": str(reference_name).strip(), "items": items}, []
+
+
+def add_empty_employee_matrix(items):
+    """为新批次固化创建当时的启用员工范围，分货量保持空白。"""
+    employees = User.query.filter_by(role="employee", is_active=True).order_by(User.id).all()
+    for item in items:
+        for employee in employees:
+            db.session.add(ItemAssignment(
+                batch_item_id=item.id,
+                user_id=employee.id,
+                employee_name=employee.display_name,
+                allocated_quantity=None,
+            ))
+
+
+def validate_batch_metadata(data):
+    name = str(data.get("name", "")).strip()
+    arrival_time = str(data.get("arrival_time", "")).strip()
+    if not name or not arrival_time:
+        raise ValueError("批次名称和到货时间不能为空")
+    try:
+        arrival_date = date.fromisoformat(arrival_time)
+    except ValueError as exc:
+        raise ValueError("到货日期格式必须为 YYYY-MM-DD") from exc
+    return name, arrival_date
 
 
 def parse_active(value):
@@ -702,34 +797,113 @@ def list_batches():
 @auth_required("admin")
 def create_batch():
     data = request.get_json(silent=True) or {}
-    if not data.get("name") or not data.get("arrival_time"):
-        return jsonify({"error": "批次名称和到货时间不能为空"}), 400
     try:
-        arrival_date = date.fromisoformat(str(data["arrival_time"]))
-    except ValueError:
-        return api_error("到货日期格式必须为 YYYY-MM-DD")
+        name, arrival_date = validate_batch_metadata(data)
+    except ValueError as exc:
+        return api_error(str(exc))
+    if data.get("source_type", "manual") != "manual":
+        return api_error("Excel 批次请使用导入接口创建")
+    source_items = data.get("items")
+    if not isinstance(source_items, list) or not source_items:
+        return api_error("手动创建批次至少要选择一个产品")
+
+    selected_ids = set()
+    prepared_items = []
+    for source in source_items:
+        cargo_type_id = source.get("cargo_type_id")
+        if not cargo_type_id or cargo_type_id in selected_ids:
+            return api_error("手动创建产品不能为空且不能重复")
+        cargo_type = CargoType.query.filter_by(id=cargo_type_id, is_active=True).first()
+        if not cargo_type:
+            return api_error("所选产品不存在或已停用")
+        if "company_quantity" not in source:
+            return api_error("请填写每个产品的公司到货数量")
+        try:
+            company_quantity = parse_quantity(source["company_quantity"], allow_zero=True)
+        except ValueError as exc:
+            return api_error(str(exc))
+        selected_ids.add(cargo_type_id)
+        prepared_items.append((cargo_type, company_quantity, str(source.get("remark", "")).strip()))
+
     batch = Batch(
-        name=str(data["name"]).strip(),
+        name=name,
         reference_name=str(data.get("reference_name", "")).strip(),
         arrival_date=arrival_date,
-        source_type=data.get("source_type", "manual"),
+        source_type="manual",
         batch_remark=data.get("batch_remark", ""),
     )
-    db.session.add(batch)
-    db.session.flush()
-    for it in data.get("items", []):
-        try:
-            company_quantity = parse_quantity(it.get("company_quantity", 0), allow_zero=True)
-        except ValueError as exc:
-            db.session.rollback()
-            return api_error(str(exc))
-        db.session.add(BatchItem(
-            batch_id=batch.id, cargo_type_id=it.get("cargo_type_id"),
-            name=it["name"], unit=it.get("unit", ""),
-            company_quantity=company_quantity, remark=it.get("remark", ""),
-        ))
-    db.session.commit()
+    try:
+        db.session.add(batch)
+        db.session.flush()
+        items = []
+        for cargo_type, company_quantity, remark in prepared_items:
+            item = BatchItem(
+                batch_id=batch.id, cargo_type_id=cargo_type.id,
+                name=cargo_type.name, unit=cargo_type.default_unit or "",
+                company_quantity=company_quantity, remark=remark,
+            )
+            db.session.add(item)
+            items.append(item)
+        db.session.flush()
+        add_empty_employee_matrix(items)
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+        raise
     return jsonify({"id": batch.id, "message": "批次创建成功"})
+
+
+@app.route("/api/batches/import/validate", methods=["POST"])
+@auth_required("admin")
+def validate_batch_import():
+    parsed, errors = parse_import_workbook(request.files.get("file"))
+    if errors:
+        return jsonify({"error": "Excel 校验失败", "errors": errors}), 400
+    return jsonify({
+        "reference_name": parsed["reference_name"],
+        "items": [{"name": item["name"], "company_quantity": quantity_value(item["company_quantity"])} for item in parsed["items"]],
+    })
+
+
+@app.route("/api/batches/import", methods=["POST"])
+@auth_required("admin")
+def create_batch_from_import():
+    parsed, errors = parse_import_workbook(request.files.get("file"))
+    if errors:
+        return jsonify({"error": "Excel 校验失败", "errors": errors}), 400
+    try:
+        name, arrival_date = validate_batch_metadata(request.form)
+    except ValueError as exc:
+        return api_error(str(exc))
+    batch = Batch(
+        name=name,
+        reference_name=parsed["reference_name"],
+        arrival_date=arrival_date,
+        source_type="import",
+        batch_remark=str(request.form.get("batch_remark", "")).strip(),
+    )
+    try:
+        db.session.add(batch)
+        db.session.flush()
+        items = []
+        for source in parsed["items"]:
+            item = BatchItem(
+                batch_id=batch.id,
+                cargo_type_id=None,
+                name=source["name"],
+                unit="",
+                company_quantity=source["company_quantity"],
+                remark="Excel 导入",
+            )
+            db.session.add(item)
+            items.append(item)
+        db.session.flush()
+        add_empty_employee_matrix(items)
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+        raise
+    return jsonify({"id": batch.id, "message": "Excel 批次创建成功"})
 
 
 @app.route("/api/batches/<int:bid>", methods=["DELETE"])
@@ -766,20 +940,8 @@ def update_batch(bid):
 @app.route("/api/batches/<int:bid>/items", methods=["GET"])
 @auth_required("admin")
 def list_items(bid):
-    items = BatchItem.query.filter_by(batch_id=bid).all()
-    cargo_types = CargoType.query.filter_by(is_active=True).all()
-    existing_names = {i.name for i in items}
-    for ct in cargo_types:
-        if ct.name not in existing_names:
-            item = BatchItem(batch_id=bid, cargo_type_id=ct.id, name=ct.name,
-                             unit=ct.default_unit or "", company_quantity=0)
-            db.session.add(item)
-            db.session.flush()
-            items.append(item)
-            existing_names.add(ct.name)
-    if cargo_types:
-        db.session.commit()
-        items = BatchItem.query.filter_by(batch_id=bid).all()
+    Batch.query.get_or_404(bid)
+    items = BatchItem.query.filter_by(batch_id=bid).order_by(BatchItem.id).all()
     return jsonify([item_dict(i) for i in items])
 
 
@@ -789,8 +951,10 @@ def add_item(bid):
     data = request.get_json(silent=True) or {}
     if not data.get("name") or not data.get("unit"):
         return jsonify({"error": "货品名称与单位不能为空"}), 400
+    if "company_quantity" not in data:
+        return api_error("请填写公司到货数量")
     try:
-        company_quantity = parse_quantity(data.get("company_quantity", 0), allow_zero=True)
+        company_quantity = parse_quantity(data["company_quantity"], allow_zero=True)
     except ValueError as exc:
         return api_error(str(exc))
     item = BatchItem(batch_id=bid, cargo_type_id=data.get("cargo_type_id"),
@@ -815,7 +979,13 @@ def delete_item(iid):
 @auth_required("admin")
 def save_assignments(iid):
     data = request.get_json(silent=True) or []
+    company_quantity = None
     if isinstance(data, dict):
+        if "company_quantity" in data:
+            try:
+                company_quantity = parse_quantity(data["company_quantity"], allow_zero=True)
+            except ValueError as exc:
+                return api_error(str(exc))
         data = data.get("assignments", [])
     if not isinstance(data, list):
         return api_error("分货数据格式不正确")
@@ -824,6 +994,8 @@ def save_assignments(iid):
     keep_user_ids = set()
     requested = []
     for source in data:
+        if "actual_quantity" in source:
+            return api_error("管理员不能填写或修改员工报货数量")
         user_id = source.get("user_id") or source.get("employee_id")
         raw_quantity = source.get("allocated_quantity", source.get("quantity"))
         if not user_id:
@@ -845,8 +1017,11 @@ def save_assignments(iid):
         requested.append((user, row, allocated))
         keep_user_ids.add(user_id)
     total_allocated = sum((entry[2] for entry in requested), Decimal("0"))
-    if total_allocated > Decimal(item.company_quantity):
+    effective_company_quantity = company_quantity if company_quantity is not None else Decimal(item.company_quantity)
+    if total_allocated > effective_company_quantity:
         return api_error("总分货数量不能大于分给公司的数量")
+    if company_quantity is not None:
+        item.company_quantity = company_quantity
     for user, row, allocated in requested:
         if not row:
             row = ItemAssignment(batch_item_id=item.id, user_id=user.id,
@@ -878,18 +1053,59 @@ def batch_report(bid):
     batch = Batch.query.get_or_404(bid)
     items = BatchItem.query.filter_by(batch_id=bid).all()
     details = []
+    batch_company = Decimal("0")
+    batch_allocated = Decimal("0")
+    batch_actual = Decimal("0")
+    employee_totals = {}
     for item in items:
         assignments = ItemAssignment.query.filter_by(batch_item_id=item.id).all()
-        total = sum((a.actual_quantity for a in assignments if a.actual_quantity is not None), Decimal("0"))
+        total_allocated = sum((
+            a.allocated_quantity for a in assignments if a.allocated_quantity is not None
+        ), Decimal("0"))
+        total_actual = sum((
+            a.actual_quantity for a in assignments
+            if a.report_status == "已锁定" and a.actual_quantity is not None
+        ), Decimal("0"))
+        company_quantity = Decimal(item.company_quantity)
+        remaining = company_quantity - total_allocated
+        batch_company += company_quantity
+        batch_allocated += total_allocated
+        batch_actual += total_actual
+        for assignment in assignments:
+            employee = employee_totals.setdefault(assignment.user_id, {
+                "user_id": assignment.user_id,
+                "user_name": assignment.employee_name,
+                "allocated_quantity": Decimal("0"),
+                "actual_quantity": Decimal("0"),
+            })
+            if assignment.allocated_quantity is not None:
+                employee["allocated_quantity"] += assignment.allocated_quantity
+            if assignment.report_status == "已锁定" and assignment.actual_quantity is not None:
+                employee["actual_quantity"] += assignment.actual_quantity
         details.append({
             "item_name": item.name, "item_unit": item.unit, "item_status": item.status,
             "item_spec": "", "item_remark": item.remark,
             "assignments": [assignment_dict(a) for a in assignments],
-            "total_actual": quantity_value(total),
+            "company_quantity": quantity_value(company_quantity),
+            "total_allocated": quantity_value(total_allocated),
+            "total_actual": quantity_value(total_actual),
+            "remaining_quantity": quantity_value(remaining),
         })
     return jsonify({
         "batch_name": batch.name, "arrival_time": batch.arrival_time,
         "created_at": datetime_value(batch.created_at), "details": details,
+        "employee_totals": [{
+            "user_id": employee["user_id"],
+            "user_name": employee["user_name"],
+            "allocated_quantity": quantity_value(employee["allocated_quantity"]),
+            "actual_quantity": quantity_value(employee["actual_quantity"]),
+        } for employee in employee_totals.values()],
+        "totals": {
+            "company_quantity": quantity_value(batch_company),
+            "allocated_quantity": quantity_value(batch_allocated),
+            "actual_quantity": quantity_value(batch_actual),
+            "remaining_quantity": quantity_value(batch_company - batch_allocated),
+        },
     })
 
 
