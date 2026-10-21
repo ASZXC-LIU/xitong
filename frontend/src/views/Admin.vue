@@ -87,23 +87,29 @@
             <select v-model="selectedBatchId" @change="onBatchSelectChange" class="batch-select">
               <option value="" disabled>-- 请选择批次 --</option>
               <option v-for="b in sortedBatches" :key="b.id" :value="b.id">
-                {{ b.name }} (到货: {{ b.arrival_time }} | {{ b.item_count }} 个货)
+                {{ b.name }} ({{ b.status }} | 到货: {{ b.arrival_time }} | {{ b.item_count }} 个货)
               </option>
             </select>
             <button class="btn btn-sm btn-primary" @click="showBatchFormForCreate" style="margin-left:10px">+ 新建</button>
             <button class="btn btn-sm" @click="openReportForSelected" style="margin-left:6px"
               :disabled="!selectedBatchId">明细</button>
-            <button class="btn btn-sm btn-danger" @click="deleteBatch(selectedBatchId)" style="margin-left:6px"
-              :disabled="!selectedBatchId">删除</button>
+            <button class="btn btn-sm btn-danger" @click="deleteBatch(selectedBatch)" style="margin-left:6px"
+              :disabled="!selectedBatch || !selectedBatch.can_delete"
+              :title="selectedBatch?.can_delete ? '删除空批次' : '已有分货或报货记录的批次只能关闭'">删除</button>
+            <button v-if="selectedBatch && selectedBatch.status === '已完成'" class="btn btn-sm btn-danger" @click="closeBatch(selectedBatch)" style="margin-left:6px">关闭批次</button>
+            <button v-if="selectedBatch && selectedBatch.status === '已关闭'" class="btn btn-sm" @click="reopenBatch(selectedBatch)" style="margin-left:6px">重新打开</button>
           </div>
 
           <div class="batch-right">
             <div v-if="!selectedBatchId" class="empty-hint">请选择一个批次</div>
             <template v-else>
               <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
-                <strong>货品列表</strong>
+                <div style="display:flex;align-items:center;gap:8px">
+                  <strong>货品列表</strong>
+                  <span :class="['status-badge', batchStatusClass(selectedBatch?.status)]">{{ selectedBatch?.status }}</span>
+                </div>
                 <div>
-                  <button class="btn btn-primary" @click="saveAllAssignments" :disabled="hasAllocationErrors">保存分货</button>
+                  <button class="btn btn-primary" @click="saveAllAssignments" :disabled="hasAllocationErrors || selectedBatch?.status === '已关闭'">保存分货</button>
                 </div>
               </div>
               <div class="matrix-filters">
@@ -154,10 +160,14 @@
                             @input="updateLocalData(item, emp.id, $event.target.value)"
                             @focus="$event.target.select()"
                             @keyup.enter="$event.target.blur()"
+                            :disabled="selectedBatch?.status === '已关闭'"
                             class="cell-input" />
                         </td>
                         <td class="cell-qty-actual col-type-actual">
                           <span class="actual-qty">{{ getItemActual(item, emp.id) }}</span>
+                          <span v-if="getOriginalActual(item, emp.id) !== '-'" class="original-actual">原报 {{ getOriginalActual(item, emp.id) }}</span>
+                          <button v-if="isAssignmentLocked(item, emp.id) && selectedBatch?.status !== '已关闭'"
+                            class="btn btn-xs unlock-button" @click="unlockAssignment(item, getAssignment(item, emp.id))">解锁</button>
                         </td>
                       </template>
                       <td class="cell-total col-type-alloc">{{ getItemTotal(item) }}</td>
@@ -418,6 +428,7 @@
                 <th>名称</th>
                 <th>到货时间</th>
                 <th>货品数</th>
+                <th>状态</th>
                 <th>备注</th>
                 <th>创建时间</th>
                 <th style="width:240px">操作</th>
@@ -428,13 +439,17 @@
                 <td><strong>{{ b.name }}</strong></td>
                 <td>{{ b.arrival_time }}</td>
                 <td>{{ b.item_count }}</td>
+                <td><span :class="['status-badge', batchStatusClass(b.status)]">{{ b.status }}</span></td>
                 <td class="cell-remark">{{ b.batch_remark || '无备注' }}</td>
                 <td>{{ b.created_at?.slice(0, 16) }}</td>
                 <td>
-                  <div class="action-group" style="display:flex;gap:4px;flex-wrap:nowrap">
+                  <div class="action-group" style="display:flex;gap:4px;flex-wrap:wrap">
                     <button class="btn btn-xs btn-primary" @click="goToBatchManagement(b)">分单</button>
                     <button class="btn btn-xs" @click="editBatch(b)">编辑</button>
-                    <button class="btn btn-xs btn-danger" @click="deleteBatch(b.id)">删除</button>
+                    <button v-if="b.status === '已完成'" class="btn btn-xs btn-danger" @click="closeBatch(b)">关闭</button>
+                    <button v-if="b.status === '已关闭'" class="btn btn-xs" @click="reopenBatch(b)">重新打开</button>
+                    <button class="btn btn-xs btn-danger" @click="deleteBatch(b)" :disabled="!b.can_delete"
+                      :title="b.can_delete ? '删除空批次' : '已有分货或报货记录的批次只能关闭'">删除</button>
                   </div>
                 </td>
               </tr>
@@ -549,10 +564,15 @@
                @input="updateLocalData(itemDetailView, emp.id, $event.target.value)"
                @focus="$event.target.select()"
                @keyup.enter="$event.target.blur()"
+               :disabled="selectedBatch?.status === '已关闭'"
                class="cell-input" />
             </span>
-            <span style="width:80px;text-align:center;color:#67c23a;font-weight:500">{{ getItemActual(itemDetailView,
-              emp.id) }}</span>
+            <span style="width:80px;text-align:center;color:#67c23a;font-weight:500">
+              {{ getItemActual(itemDetailView, emp.id) }}
+              <small v-if="getOriginalActual(itemDetailView, emp.id) !== '-'" class="original-actual">原报 {{ getOriginalActual(itemDetailView, emp.id) }}</small>
+              <button v-if="isAssignmentLocked(itemDetailView, emp.id) && selectedBatch?.status !== '已关闭'"
+                class="btn btn-xs unlock-button" @click="unlockAssignment(itemDetailView, getAssignment(itemDetailView, emp.id))">解锁</button>
+            </span>
           </div>
         </div>
         <div v-if="employees && employees.length"
@@ -565,7 +585,7 @@
         </div>
         <div class="modal-actions">
           <button class="btn" @click="itemDetailView = null">取消</button>
-          <button class="btn btn-primary" @click="saveAllAssignments" :disabled="hasAllocationErrors">保存分货</button>
+          <button class="btn btn-primary" @click="saveAllAssignments" :disabled="hasAllocationErrors || selectedBatch?.status === '已关闭'">保存分货</button>
         </div>
       </div>
   
@@ -591,6 +611,7 @@
 </template>
 
 <script>
+import * as XLSX from 'xlsx'
 
 const API = "/api"
 
@@ -740,6 +761,9 @@ export default {
         const db = b.arrival_time || ''
         return db.localeCompare(da) || (b.id - a.id)
       })
+    },
+    selectedBatch() {
+      return this.batches.find(batch => batch.id === Number(this.selectedBatchId)) || null
     },
     filteredItems() {
       const keyword = this.itemSearch.toLowerCase()
@@ -1011,11 +1035,47 @@ export default {
       }, 50);
     },
 
-    async deleteBatch(id) {
-      if (!confirm("确认删除此批次?")) return
-      await apiDelete(API + "/batches/" + id)
-      if (this.selectedBatchId === id) { this.selectedBatchId = null; this.items = [] }
-      this.loadBatches()
+    async deleteBatch(batch) {
+      if (!batch) return
+      if (!batch.can_delete) {
+        alert("该批次已有分货或报货记录，不能删除；请关闭批次")
+        return
+      }
+      if (!confirm(`确认删除空批次“${batch.name}”？此操作无法恢复。`)) return
+      try {
+        await apiDelete(API + "/batches/" + batch.id)
+        if (this.selectedBatchId === batch.id) { this.selectedBatchId = null; this.items = [] }
+        await this.loadBatches()
+      } catch (error) {
+        alert(error.message || "删除批次失败")
+      }
+    },
+    batchStatusClass(status) {
+      if (status === '已完成') return 'status-ok'
+      if (status === '已关闭') return 'status-closed'
+      return 'status-pending'
+    },
+    async closeBatch(batch) {
+      if (!confirm(`确认关闭“${batch.name}”？关闭后员工只能查看，不能再提交报货。`)) return
+      try {
+        await apiPost(API + '/batches/' + batch.id + '/close', {})
+        await this.loadBatches()
+        if (this.selectedBatchId === batch.id) await this.loadItems(batch.id)
+        alert('批次已关闭')
+      } catch (error) {
+        alert(error.message || '关闭批次失败')
+      }
+    },
+    async reopenBatch(batch) {
+      if (!confirm(`确认重新打开“${batch.name}”？重新打开后可继续处理该批次。`)) return
+      try {
+        await apiPost(API + '/batches/' + batch.id + '/reopen', {})
+        await this.loadBatches()
+        if (this.selectedBatchId === batch.id) await this.loadItems(batch.id)
+        alert('批次已重新打开')
+      } catch (error) {
+        alert(error.message || '重新打开批次失败')
+      }
     },
     
     async deleteItem(item) {
@@ -1077,9 +1137,32 @@ export default {
       }
     },
 
+    getAssignment(item, userId) {
+      return (item.assignments || []).find(assignment => assignment.user_id === userId) || null
+    },
+    isAssignmentLocked(item, userId) {
+      return this.getAssignment(item, userId)?.report_status === '已锁定'
+    },
+    async unlockAssignment(item, assignment) {
+      if (!assignment) return
+      const batchName = this.selectedBatch?.name || '当前批次'
+      const actualQuantity = assignment.actual_quantity == null ? '-' : assignment.actual_quantity
+      const confirmed = confirm(
+        `确认解锁报货？\n批次：${batchName}\n产品：${item.name}\n员工：${assignment.user_name}\n原报货量：${actualQuantity} ${item.unit || ''}\n\n解锁后员工可以重新填写并提交。`
+      )
+      if (!confirmed) return
+      try {
+        await apiPost(API + '/assignments/' + assignment.id + '/unlock', {})
+        await this.loadItems(this.selectedBatchId)
+        await this.loadBatches()
+        alert('已解锁，员工可以重新报货')
+      } catch (error) {
+        alert(error.message || '解锁报货失败')
+      }
+    },
     getItemQty(item, userId) {
       if (!item.assignments) return '-';
-      const a = item.assignments.find(a => a.user_id === userId);
+      const a = this.getAssignment(item, userId);
       if (a && a.allocated_quantity !== null && a.allocated_quantity !== undefined && a.allocated_quantity !== "") {
         return a.allocated_quantity;
       }
@@ -1087,8 +1170,15 @@ export default {
     },
     getItemActual(item, userId) {
       if (!item.assignments) return '-';
-      const a = item.assignments.find(a => a.user_id === userId);
-      if (a && a.actual_quantity !== null && a.actual_quantity !== undefined && a.actual_quantity !== "") {
+      const a = this.getAssignment(item, userId);
+      if (a?.report_status === '已锁定' && a.actual_quantity !== null && a.actual_quantity !== undefined && a.actual_quantity !== "") {
+        return a.actual_quantity;
+      }
+      return '-';
+    },
+    getOriginalActual(item, userId) {
+      const a = this.getAssignment(item, userId);
+      if (a?.report_status === '已解锁待重报' && a.actual_quantity !== null && a.actual_quantity !== undefined && a.actual_quantity !== '') {
         return a.actual_quantity;
       }
       return '-';
@@ -1108,7 +1198,7 @@ export default {
       if (!item.assignments) return '-';
       let sum = 0, hasVal = false;
       item.assignments.forEach(a => {
-        if (a.actual_quantity !== '-' && a.actual_quantity != null && a.actual_quantity !== '') {
+        if (a.report_status === '已锁定' && a.actual_quantity !== '-' && a.actual_quantity != null && a.actual_quantity !== '') {
           sum += Number(a.actual_quantity); hasVal = true;
         }
       });
@@ -1152,7 +1242,7 @@ export default {
       for (const item of this.items) {
         if (item.assignments) {
           const a = item.assignments.find(a => a.user_id === userId);
-          if (a && a.actual_quantity !== '-' && a.actual_quantity != null && a.actual_quantity !== '') {
+          if (a?.report_status === '已锁定' && a.actual_quantity !== '-' && a.actual_quantity != null && a.actual_quantity !== '') {
             sum += Number(a.actual_quantity); hasVal = true;
           }
         }
@@ -1177,7 +1267,7 @@ export default {
       for (const item of this.items) {
         if (item.assignments) {
           for (const a of item.assignments) {
-            if (a.actual_quantity !== '-' && a.actual_quantity != null && a.actual_quantity !== '') {
+            if (a.report_status === '已锁定' && a.actual_quantity !== '-' && a.actual_quantity != null && a.actual_quantity !== '') {
               sum += Number(a.actual_quantity); hasVal = true;
             }
           }
@@ -1240,10 +1330,11 @@ export default {
       if (!win) return
       const title = this.summaryData.batch_name || "全品类汇总"
       const arrival = this.summaryData.arrival_time || ""
+      const generatedAt = new Date().toLocaleString('zh-CN', { hour12: false })
       win.document.write('<html><head><meta charset="UTF-8">')
       win.document.write("<style>@page{size:landscape}body{font-family:sans-serif;padding:20px}h2{text-align:center;font-size:16px;margin-bottom:8px}p{text-align:center;font-size:12px;color:#666;margin-bottom:12px}table{width:100%;border-collapse:collapse;font-size:12px}th,td{border:1px solid #000;padding:3px 4px;text-align:center;font-size:11px}th{background:#d9e1f2;font-weight:700}td{vertical-align:middle}.sum-name{text-align:left}.sum-total{font-weight:600}</style></head><body>")
       win.document.write("<h2>" + title + "</h2>")
-      win.document.write("<p>" + (arrival ? "到货时间: " + arrival : "") + "</p>")
+      win.document.write("<p>" + (arrival ? "到货时间: " + arrival + "　" : "") + "生成时间: " + generatedAt + "</p>")
       win.document.write(table.outerHTML)
       win.document.write("</body></html>")
       win.document.close()
@@ -1397,7 +1488,7 @@ export default {
     getActual(d, userId) {
       if (!d.assignments) return '-';
       const a = d.assignments.find(a => a.user_id === userId);
-      return (a && a.actual_quantity !== null && a.actual_quantity !== undefined && a.actual_quantity !== '') ? a.actual_quantity : '-';
+      return (a?.report_status === '已锁定' && a.actual_quantity !== null && a.actual_quantity !== undefined && a.actual_quantity !== '') ? a.actual_quantity : '-';
     },
     getAllocTotal(d) {
       if (!d.assignments) return '-';
@@ -1457,24 +1548,50 @@ export default {
 
     downloadExcel() {
       if (!this.summaryData) return
-      const table = document.getElementById("summary-table")
-      if (!table) return
-      let html = '<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">'
-      html += '<head><meta charset="UTF-8">'
-      html += '<style>th,td{border:1px solid #000;padding:4px 6px;font-size:12px;text-align:center}th{background:#d9e1f2;font-weight:700}td{vertical-align:middle}</style></head><body>'
-      html += '<h2 style="text-align:center;font-size:16px;margin-bottom:8px">' + (this.summaryData.batch_name || "全品类汇总") + '</h2>'
-      html += '<p style="text-align:center;font-size:12px;color:#666;margin-bottom:12px">到货时间: ' + (this.summaryData.arrival_time || "") + '</p>'
-      html += table.outerHTML
-      html += '</body></html>'
-      const blob = new Blob([html], { type: "application/vnd.ms-excel" })
-      const url = URL.createObjectURL(blob)
-      const a = document.createElement("a")
-      a.href = url
-      a.download = (this.summaryData.batch_name || "全品类汇总") + ".xls"
-      document.body.appendChild(a)
-      a.click()
-      document.body.removeChild(a)
-      URL.revokeObjectURL(url)
+      const employees = this.summaryEmployees
+      const headers = ['序号', '货品名称', '公司到货']
+      employees.forEach(emp => headers.push(`${emp.name}-分货`, `${emp.name}-报货`))
+      headers.push('总分货', '总报货', '剩余')
+      const asNumberOrBlank = value => value === '-' || value === null || value === undefined || value === '' ? null : Number(value)
+      const rows = this.summaryData.details.map((detail, index) => [
+        index + 1,
+        detail.item_name,
+        asNumberOrBlank(detail.company_quantity),
+        ...employees.flatMap(emp => [
+          asNumberOrBlank(this.getAlloc(detail, emp.id)),
+          asNumberOrBlank(this.getActual(detail, emp.id)),
+        ]),
+        asNumberOrBlank(detail.total_allocated),
+        asNumberOrBlank(detail.total_actual),
+        asNumberOrBlank(detail.remaining_quantity),
+      ])
+      const totalRow = [
+        null,
+        '合计',
+        asNumberOrBlank(this.summaryData.totals.company_quantity),
+        ...employees.flatMap(emp => [
+          asNumberOrBlank(emp.allocated_quantity),
+          asNumberOrBlank(emp.actual_quantity),
+        ]),
+        asNumberOrBlank(this.summaryData.totals.allocated_quantity),
+        asNumberOrBlank(this.summaryData.totals.actual_quantity),
+        asNumberOrBlank(this.summaryData.totals.remaining_quantity),
+      ]
+      const sheet = XLSX.utils.aoa_to_sheet([
+        [this.summaryData.batch_name || '全品类汇总'],
+        [`到货时间：${this.summaryData.arrival_time || ''}`],
+        headers,
+        ...rows,
+        totalRow,
+      ])
+      sheet['!merges'] = [
+        { s: { r: 0, c: 0 }, e: { r: 0, c: headers.length - 1 } },
+        { s: { r: 1, c: 0 }, e: { r: 1, c: headers.length - 1 } },
+      ]
+      sheet['!cols'] = headers.map((header, index) => ({ wch: index === 1 ? 22 : Math.max(10, header.length + 2) }))
+      const workbook = XLSX.utils.book_new()
+      XLSX.utils.book_append_sheet(workbook, sheet, '批次汇总')
+      XLSX.writeFile(workbook, `${this.summaryData.batch_name || '全品类汇总'}.xlsx`, { compression: true })
     },
     logout() {
       localStorage.removeItem("user")
@@ -1844,6 +1961,21 @@ body {
 .status-ok {
   background: #f0f9eb;
   color: #67c23a;
+}
+
+.status-closed {
+  background: #f2f4f7;
+  color: #475467;
+}
+
+.unlock-button {
+  display: block;
+  width: 100%;
+  min-height: 28px;
+  margin-top: 4px;
+  border-color: #b54708;
+  color: #b54708;
+  background: #fff;
 }
 
 .modal-mask {
@@ -2244,6 +2376,14 @@ body {
   padding: 2px 3px;
   text-align: center;
   font-size: 12px;
+}
+
+.original-actual {
+  display: block;
+  color: #B54708;
+  font-size: 11px;
+  font-weight: 400;
+  white-space: nowrap;
 }
 
 .summary-table thead th {

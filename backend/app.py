@@ -170,7 +170,35 @@ def update_item_status(item_id):
         item.status = "已完成"
     else:
         item.status = "待报货"
+    update_batch_status(item.batch_id)
     db.session.commit()
+
+
+def update_batch_status(batch_id):
+    """按所有有效分货记录的提交状态刷新批次，不覆盖管理员关闭状态。"""
+    batch = db.session.get(Batch, batch_id)
+    if not batch or batch.status == "已关闭":
+        return
+    assignments = ItemAssignment.query.join(BatchItem).filter(
+        BatchItem.batch_id == batch_id,
+        ItemAssignment.allocated_quantity.isnot(None),
+        ItemAssignment.allocated_quantity > 0,
+    ).all()
+    batch.status = "已完成" if assignments and all(
+        assignment.report_status == "已锁定" for assignment in assignments
+    ) else "进行中"
+
+
+def batch_has_business_records(batch_id):
+    """空员工矩阵不算业务记录；实际分货或报货后才禁止删除批次。"""
+    from sqlalchemy import or_
+    return db.session.query(ItemAssignment.id).join(BatchItem).filter(
+        BatchItem.batch_id == batch_id,
+        or_(
+            ItemAssignment.allocated_quantity > 0,
+            ItemAssignment.actual_quantity.isnot(None),
+        ),
+    ).first() is not None
 
 
 def item_dict(item):
@@ -790,6 +818,7 @@ def list_batches():
         "created_at": datetime_value(b.created_at), "batch_remark": b.batch_remark or "",
         "reference_name": b.reference_name, "source_type": b.source_type, "status": b.status,
         "item_count": BatchItem.query.filter_by(batch_id=b.id).count(),
+        "can_delete": not batch_has_business_records(b.id),
     } for b in batches])
 
 
@@ -910,6 +939,8 @@ def create_batch_from_import():
 @auth_required("admin")
 def delete_batch(bid):
     batch = Batch.query.get_or_404(bid)
+    if batch_has_business_records(batch.id):
+        return api_error("该批次已有分货或报货记录，不能删除；请关闭批次")
     items = BatchItem.query.filter_by(batch_id=bid).all()
     for item in items:
         ItemAssignment.query.filter_by(batch_item_id=item.id).delete()
@@ -935,6 +966,32 @@ def update_batch(bid):
         batch.batch_remark = data["batch_remark"]
     db.session.commit()
     return jsonify({"message": "批次已更新", "id": batch.id})
+
+
+@app.route("/api/batches/<int:bid>/close", methods=["POST"])
+@auth_required("admin")
+def close_batch(bid):
+    batch = Batch.query.get_or_404(bid)
+    update_batch_status(batch.id)
+    if batch.status != "已完成":
+        return api_error("仅全部报货完成的批次可以关闭")
+    batch.status = "已关闭"
+    batch.closed_at = utcnow()
+    db.session.commit()
+    return jsonify({"message": "批次已关闭", "id": batch.id, "status": batch.status})
+
+
+@app.route("/api/batches/<int:bid>/reopen", methods=["POST"])
+@auth_required("admin")
+def reopen_batch(bid):
+    batch = Batch.query.get_or_404(bid)
+    if batch.status != "已关闭":
+        return api_error("只有已关闭的批次可以重新打开")
+    batch.closed_at = None
+    batch.status = "进行中"
+    update_batch_status(batch.id)
+    db.session.commit()
+    return jsonify({"message": "批次已重新打开", "id": batch.id, "status": batch.status})
 
 
 @app.route("/api/batches/<int:bid>/items", methods=["GET"])
@@ -990,6 +1047,8 @@ def save_assignments(iid):
     if not isinstance(data, list):
         return api_error("分货数据格式不正确")
     item = BatchItem.query.get_or_404(iid)
+    if item.batch.status == "已关闭":
+        return api_error("批次已关闭，请先重新打开后再保存分货")
     existing = {row.user_id: row for row in ItemAssignment.query.filter_by(batch_item_id=iid).all()}
     keep_user_ids = set()
     requested = []
@@ -1043,6 +1102,24 @@ def save_assignments(iid):
 @auth_required("admin")
 def get_assignments(iid):
     return jsonify([assignment_dict(a) for a in ItemAssignment.query.filter_by(batch_item_id=iid).all()])
+
+
+@app.route("/api/assignments/<int:aid>/unlock", methods=["POST"])
+@auth_required("admin")
+def unlock_assignment(aid):
+    assignment = ItemAssignment.query.get_or_404(aid)
+    batch = assignment.item.batch
+    if batch.status == "已关闭":
+        return api_error("批次已关闭，请先重新打开后再解锁报货")
+    if assignment.report_status != "已锁定":
+        return api_error("只有已锁定的报货记录可以解锁")
+    assignment.report_status = "已解锁待重报"
+    update_item_status(assignment.batch_item_id)
+    return jsonify({
+        "message": "报货已解锁，员工可以重新提交",
+        "assignment_id": assignment.id,
+        "report_status": assignment.report_status,
+    })
 
 
 # ======================== 管 理 员：报 表 ========================
@@ -1117,7 +1194,10 @@ def global_summary():
         BatchItem.name, BatchItem.unit,
         func.sum(ItemAssignment.actual_quantity).label("total_actual")
     ).join(ItemAssignment, ItemAssignment.batch_item_id == BatchItem.id) \
-        .filter(ItemAssignment.actual_quantity.isnot(None)) \
+        .filter(
+            ItemAssignment.report_status == "已锁定",
+            ItemAssignment.actual_quantity.isnot(None),
+        ) \
         .group_by(BatchItem.name, BatchItem.unit).all()
     return jsonify([{"name": r[0], "unit": r[1], "total_actual": quantity_value(r[2] or 0)} for r in rows])
 
@@ -1159,6 +1239,8 @@ def employee_submit():
     ).first()
     if not assignment:
         return api_error("未找到本人的报货任务", 404, "NOT_FOUND")
+    if assignment.item.batch.status == "已关闭":
+        return api_error("批次已关闭，仅可查看报货结果")
     if assignment.report_status == "已锁定":
         return jsonify({
             "message": "该记录已提交",
@@ -1189,16 +1271,60 @@ def employee_submit():
 @auth_required("employee")
 def employee_my_batches():
     uid = g.current_user.id
-    batch_ids = db.session.query(BatchItem.batch_id).join(ItemAssignment).filter(
-        ItemAssignment.user_id == uid, ItemAssignment.allocated_quantity > 0
-    ).distinct().all()
-    batch_ids = [b[0] for b in batch_ids]
-    batches = Batch.query.filter(Batch.id.in_(batch_ids)).order_by(Batch.created_at.desc()).all()
-    return jsonify([{
+    before_date = request.args.get("before_date", "").strip()
+    before_id = request.args.get("before_id", type=int)
+    try:
+        window_days = int(request.args.get("window_days", 15))
+    except (TypeError, ValueError):
+        return api_error("历史任务加载参数不正确")
+    if window_days != 15:
+        return api_error("历史任务每次只能加载 15 天")
+
+    query = Batch.query.join(BatchItem).join(ItemAssignment).filter(
+        ItemAssignment.user_id == uid,
+        ItemAssignment.allocated_quantity > 0,
+    )
+    if before_date:
+        try:
+            cursor_date = date.fromisoformat(before_date)
+        except ValueError:
+            return api_error("历史任务日期格式不正确")
+        if not before_id:
+            return api_error("历史任务缺少分页位置")
+        from sqlalchemy import and_, or_
+        query = query.filter(or_(
+            Batch.arrival_date < cursor_date,
+            and_(Batch.arrival_date == cursor_date, Batch.id < before_id),
+        ))
+        batches = query.order_by(Batch.arrival_date.desc(), Batch.id.desc()).distinct().limit(window_days).all()
+    else:
+        today = date.today()
+        first_date = today - timedelta(days=window_days - 1)
+        batches = query.filter(
+            Batch.arrival_date >= first_date,
+            Batch.arrival_date <= today,
+        ).order_by(Batch.arrival_date.desc(), Batch.id.desc()).distinct().all()
+
+    next_cursor = None
+    if batches:
+        earliest = batches[-1]
+        from sqlalchemy import and_, or_
+        has_more = query.filter(or_(
+            Batch.arrival_date < earliest.arrival_date,
+            and_(Batch.arrival_date == earliest.arrival_date, Batch.id < earliest.id),
+        )).first() is not None
+        if has_more:
+            next_cursor = {"before_date": earliest.arrival_date.isoformat(), "before_id": earliest.id}
+    elif not before_date:
+        older_exists = query.filter(Batch.arrival_date < first_date).first() is not None
+        if older_exists:
+            next_cursor = {"before_date": first_date.isoformat(), "before_id": 2147483647}
+    return jsonify({"batches": [{
         "id": b.id, "name": b.name, "arrival_time": b.arrival_time,
         "item_count": BatchItem.query.filter_by(batch_id=b.id).count(),
+        "status": b.status,
         "created_at": datetime_value(b.created_at),
-    } for b in batches])
+    } for b in batches], "next_cursor": next_cursor})
 
 
 @app.route("/api/employee/my-items", methods=["GET"])
@@ -1223,6 +1349,7 @@ def employee_my_items():
             "allocated_quantity": quantity_value(my_assign.allocated_quantity),
             "actual_quantity": quantity_value(my_assign.actual_quantity),
             "report_status": my_assign.report_status,
+            "batch_status": item.batch.status,
             "assignment_id": my_assign.id,
         })
     return jsonify(result)

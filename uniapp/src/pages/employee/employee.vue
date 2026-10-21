@@ -11,24 +11,40 @@
 
     <!-- 批次列表 -->
     <view v-if="!selectedBatchId">
-      <view v-if="myBatches.length === 0" class="empty-state">
+      <view v-if="batchesLoading" class="empty-state">
+        <text>正在加载任务…</text>
+      </view>
+      <view v-else-if="batchLoadError" class="empty-state">
+        <text>{{ batchLoadError }}</text>
+        <button class="btn btn-primary reload-button" @click="loadMyBatches">重新加载</button>
+      </view>
+      <view v-else-if="myBatches.length === 0" class="empty-state">
         <text class="empty-icon">暂无工单</text>
         <text>您还没有被分货货品</text>
       </view>
-      <view v-for="b in myBatches" :key="b.id" class="batch-card" @click="selectBatch(b)">
+      <view v-for="b in displayBatches" :key="b.id" class="batch-card" @click="selectBatch(b)">
         <view class="batch-card-name">{{ b.name }}</view>
         <view class="batch-card-meta">
           <text>到货: {{ b.arrival_time }}</text>
           <text>货品: {{ b.item_count }} 种</text>
         </view>
+        <text v-if="b.status === '已关闭'" class="batch-closed">该批次已关闭，仅可查看</text>
         <text class="batch-card-date">{{ b.created_at?.slice(0,10) }}</text>
       </view>
+      <view v-if="loadingMore" class="history-status">正在加载更早任务…</view>
+      <view v-else-if="historyLoadError" class="history-status">
+        <text>{{ historyLoadError }}</text>
+        <button class="btn btn-sm" @click="loadMoreBatches">重试</button>
+      </view>
+      <button v-else-if="hasMoreBatches" class="btn load-more-button" @click="loadMoreBatches">加载更早任务</button>
+      <view v-else-if="myBatches.length" class="history-status">没有更早记录了</view>
     </view>
 
     <!-- 货品列表 -->
     <view v-if="selectedBatchId" class="task-wrap">
       <view class="table-toolbar">
         <text class="table-info">{{ batchName }} - 共 {{ myItems.length }} 种货品</text>
+        <text v-if="isBatchClosed" class="batch-closed">该批次已关闭，仅可查看报货结果</text>
       </view>
       <view v-if="myItems.length === 0" class="empty-state">
         <text class="empty-icon">暂无货品</text>
@@ -44,6 +60,10 @@
           <view v-if="isLocked(item)" class="locked-result">
             <text class="reported-text">已报货：{{ formatQuantity(item.actual_quantity) }} {{ item.item_unit }}</text>
             <text class="locked-text">已锁定</text>
+          </view>
+
+          <view v-else-if="isBatchClosed" class="locked-result">
+            <text class="locked-text">批次已关闭，暂不能报货</text>
           </view>
 
           <view v-else class="report-form">
@@ -80,9 +100,16 @@ export default {
     return {
       user: {},
       myBatches: [],
+      batchesLoading: false,
+      loadingMore: false,
+      hasMoreBatches: false,
+      historyCursor: null,
+      batchLoadError: '',
+      historyLoadError: '',
       myItems: [],
       selectedBatchId: null,
       batchName: "",
+      selectedBatchStatus: "进行中",
       saveMsg: "",
       saveOk: false
     }
@@ -99,13 +126,25 @@ export default {
       this.loadMyBatches()
     }
   },
+  onReachBottom() {
+    if (!this.selectedBatchId) this.loadMoreBatches()
+  },
+  computed: {
+    displayBatches() {
+      const pending = this.myBatches.filter(batch => !['已完成', '已关闭'].includes(batch.status))
+      const history = this.myBatches.filter(batch => ['已完成', '已关闭'].includes(batch.status))
+      return [...pending, ...history]
+    }
+  },
   methods: {
     statusTag(item) {
+      if (this.isBatchClosed) return 'tag-default'
       if (this.isLocked(item)) return 'tag-success'
       if (item.allocated_quantity > 0) return 'tag-warning'
       return 'tag-default'
     },
     itemStatusText(item) {
+      if (this.isBatchClosed) return '已关闭'
       if (this.isLocked(item)) return '已锁定'
       if (item.allocated_quantity > 0) return '待报货'
       return '未分配'
@@ -113,14 +152,50 @@ export default {
     isLocked(item) {
       return item.report_status === '已锁定'
     },
+    isBatchClosed() {
+      return this.selectedBatchStatus === '已关闭'
+    },
     formatQuantity(value) {
       return value == null ? '-' : value
     },
     async loadMyBatches() {
+      this.batchesLoading = true
+      this.batchLoadError = ''
+      this.historyLoadError = ''
       try {
-        this.myBatches = await apiGet('/employee/my-batches')
+        const data = await apiGet('/employee/my-batches?window_days=15')
+        this.myBatches = data.batches || []
+        this.historyCursor = data.next_cursor || null
+        this.hasMoreBatches = Boolean(this.historyCursor)
       } catch (e) {
         console.error('loadMyBatches', e)
+        this.batchLoadError = e.message || '任务加载失败，请重试'
+        this.myBatches = []
+        this.historyCursor = null
+        this.hasMoreBatches = false
+      } finally {
+        this.batchesLoading = false
+      }
+    },
+    async loadMoreBatches() {
+      if (this.loadingMore || !this.hasMoreBatches || !this.historyCursor) return
+      this.loadingMore = true
+      this.historyLoadError = ''
+      try {
+        const cursor = this.historyCursor
+        const data = await apiGet(
+          '/employee/my-batches?window_days=15&before_date=' + encodeURIComponent(cursor.before_date) + '&before_id=' + cursor.before_id
+        )
+        const knownIds = new Set(this.myBatches.map(batch => batch.id))
+        const newBatches = (data.batches || []).filter(batch => !knownIds.has(batch.id))
+        this.myBatches = [...this.myBatches, ...newBatches]
+        this.historyCursor = data.next_cursor || null
+        this.hasMoreBatches = Boolean(this.historyCursor)
+      } catch (e) {
+        console.error('loadMoreBatches', e)
+        this.historyLoadError = e.message || '加载更早任务失败，请重试'
+      } finally {
+        this.loadingMore = false
       }
     },
     async selectBatchById(batchId) {
@@ -133,6 +208,7 @@ export default {
             saving: false, saved: false, error: ""
           }
         })
+        if (data.length && data[0].batch_status) this.selectedBatchStatus = data[0].batch_status
       } catch (e) {
         console.error('selectBatchById', e)
       }
@@ -140,12 +216,14 @@ export default {
     selectBatch(b) {
       this.selectedBatchId = b.id
       this.batchName = b.name
+      this.selectedBatchStatus = b.status || '进行中'
       this.selectBatchById(b.id)
     },
     backToBatches() {
       this.selectedBatchId = null
       this.myItems = []
       this.batchName = ""
+      this.selectedBatchStatus = "进行中"
     },
     onQtyInput(item, event) {
       item.editQty = event.detail.value
@@ -159,7 +237,7 @@ export default {
       return ''
     },
     async submitItem(item) {
-      if (item.saving || this.isLocked(item)) return
+      if (item.saving || this.isLocked(item) || this.isBatchClosed) return
       const quantityError = this.reportQuantityError(item)
       if (quantityError) {
         item.error = quantityError
@@ -218,6 +296,9 @@ view, text, input, button { box-sizing: border-box; }
 .batch-card-name { font-size: 16px; font-weight: 600; color: #303133; margin-bottom: 6px; }
 .batch-card-meta { display: flex; gap: 16px; font-size: 13px; color: #606266; }
 .batch-card-date { font-size: 12px; color: #bbb; margin-top: 6px; display: block; }
+.batch-closed { display: block; margin-top: 8px; color: #667085; font-size: 14px; }
+.history-status { padding: 16px; color: #667085; font-size: 14px; text-align: center; }
+.load-more-button, .reload-button { display: block; width: 100%; min-height: 44px; margin-top: 12px; border-radius: 8px; }
 
 .task-wrap { overflow: hidden; }
 .table-toolbar { padding: 12px 14px; border-bottom: 1px solid #eee; background: #fafafa; }
